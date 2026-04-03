@@ -12,27 +12,53 @@ permissions:
 env:
   APP_NAME: Otzaria AI
   EXECUTABLE_NAME: OtzariaAI
-  APP_VERSION: 0.1.0
+  BASE_VERSION: 0.1
   PUBLISHER: Ariel Daniely
   BUNDLE_ID: com.arieldaniely.otzariaai
 
 jobs:
+  prepare-version:
+    runs-on: ubuntu-latest
+    outputs:
+      app_version: ${{ steps.compute.outputs.app_version }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Compute next patch version
+        id: compute
+        shell: bash
+        run: |
+          base="${{ env.BASE_VERSION }}"
+          latest_patch=$(git tag -l "v${base}.*" | sed -E "s/^v${base}\.([0-9]+)(-.+)?$/\1/" | sort -n | tail -1)
+          if [ -z "$latest_patch" ]; then
+            next_patch=0
+          else
+            next_patch=$((latest_patch + 1))
+          fi
+          app_version="${base}.${next_patch}"
+          echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: prepare-version
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
-            artifact_name: OtzariaAI-prerelease-${{ github.run_number }}-windows.zip
             build_target: windows
             package_kind: zip
           - os: macos-latest
-            artifact_name: OtzariaAI-prerelease-${{ github.run_number }}-macos.zip
             build_target: macos
             package_kind: zip
           - os: ubuntu-latest
-            artifact_name: OtzariaAI-prerelease-${{ github.run_number }}-linux.tar.gz
             build_target: linux
             package_kind: tar.gz
 
@@ -124,7 +150,8 @@ jobs:
         if: matrix.package_kind == 'zip'
         shell: pwsh
         run: |
-          $archive = "${{ matrix.artifact_name }}"
+          $platform = "${{ matrix.build_target }}"
+          $archive = "${{ env.EXECUTABLE_NAME }}-${{ needs.prepare-version.outputs.app_version }}-$platform.zip"
           if ("${{ matrix.build_target }}" -eq "macos") {
             Compress-Archive -Path "dist/${{ env.EXECUTABLE_NAME }}.app" -DestinationPath $archive -Force
           } else {
@@ -136,7 +163,7 @@ jobs:
         if: matrix.package_kind == 'tar.gz'
         shell: bash
         run: |
-          archive="${{ matrix.artifact_name }}"
+          archive="${{ env.EXECUTABLE_NAME }}-${{ needs.prepare-version.outputs.app_version }}-linux.tar.gz"
           tar -czf "$archive" -C dist "${{ env.EXECUTABLE_NAME }}"
           echo "ARCHIVE_NAME=$archive" >> "$GITHUB_ENV"
 
@@ -148,7 +175,9 @@ jobs:
 
   publish-release:
     runs-on: ubuntu-latest
-    needs: build
+    needs:
+      - prepare-version
+      - build
 
     steps:
       - name: Download all build artifacts
@@ -174,8 +203,7 @@ jobs:
           - בניית ניסיון ל-Linux
 
           פרטי הגרסה:
-          - גרסה: ${{ env.APP_VERSION }}
-          - מו"ל: ${{ env.PUBLISHER }}
+          - גרסה: ${{ needs.prepare-version.outputs.app_version }}
           - מספר Build: ${{ github.run_number }}
           - קומיט: `${{ github.sha }}`
 
@@ -186,8 +214,8 @@ jobs:
       - name: Publish prerelease
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.APP_VERSION }}-experimental.${{ github.run_number }}
-          name: אוצריא AI ${{ env.APP_VERSION }} ניסיוני #${{ github.run_number }}
+          tag_name: v${{ needs.prepare-version.outputs.app_version }}-experimental.${{ github.run_number }}
+          name: אוצריא AI ${{ needs.prepare-version.outputs.app_version }} ניסיוני #${{ github.run_number }}
           prerelease: true
           make_latest: false
           target_commitish: ${{ github.sha }}
