@@ -9,9 +9,32 @@ on:
 permissions:
   contents: write
 
+env:
+  APP_NAME: Otzaria AI
+  EXECUTABLE_NAME: OtzariaAI
+  APP_VERSION: 0.1.0
+  PUBLISHER: Ariel Daniely
+  BUNDLE_ID: com.arieldaniely.otzariaai
+
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: OtzariaAI-prerelease-${{ github.run_number }}-windows.zip
+            build_target: windows
+            package_kind: zip
+          - os: macos-latest
+            artifact_name: OtzariaAI-prerelease-${{ github.run_number }}-macos.zip
+            build_target: macos
+            package_kind: zip
+          - os: ubuntu-latest
+            artifact_name: OtzariaAI-prerelease-${{ github.run_number }}-linux.tar.gz
+            build_target: linux
+            package_kind: tar.gz
 
     steps:
       - name: Checkout repository
@@ -23,33 +46,106 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        shell: pwsh
+        shell: bash
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller pillow
 
-      - name: Build desktop EXE
-        shell: pwsh
+      - name: Install Linux GUI build dependencies
+        if: matrix.build_target == 'linux'
         run: |
-          pyinstaller `
-            --noconfirm `
-            --clean `
-            --windowed `
-            --onedir `
-            --name "OtzariaAI" `
-            --add-data "static;static" `
-            --add-data "models_zips;models_zips" `
-            --add-data "app_ai.html;." `
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev gir1.2-webkit2-4.1
+
+      - name: Generate macOS icon bundle
+        if: matrix.build_target == 'macos'
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import shutil
+          import subprocess
+          from PIL import Image
+
+          root = Path("static")
+          source = root / "icon.ico"
+          iconset = root / "icon.iconset"
+          icns = root / "icon.icns"
+
+          if iconset.exists():
+              shutil.rmtree(iconset)
+          iconset.mkdir(exist_ok=True)
+
+          base = Image.open(source).convert("RGBA")
+          sizes = [16, 32, 64, 128, 256, 512, 1024]
+          for size in sizes:
+              out = iconset / f"icon_{size}x{size}.png"
+              base.resize((size, size)).save(out)
+              if size <= 512:
+                  retina = iconset / f"icon_{size//2}x{size//2}@2x.png"
+                  base.resize((size, size)).save(retina)
+
+          subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(icns)], check=True)
+          shutil.rmtree(iconset)
+          PY
+
+      - name: Build desktop app
+        shell: bash
+        run: |
+          ICON_ARG=""
+          DATA_SEP=":"
+          EXTRA_ARGS=()
+          if [ "${{ matrix.build_target }}" = "windows" ]; then
+            ICON_ARG="--icon static/icon.ico"
+            DATA_SEP=";"
+            EXTRA_ARGS+=(--version-file version_info.txt)
+          elif [ "${{ matrix.build_target }}" = "macos" ] && [ -f "static/icon.icns" ]; then
+            ICON_ARG="--icon static/icon.icns"
+            EXTRA_ARGS+=(--osx-bundle-identifier "${{ env.BUNDLE_ID }}")
+          fi
+
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --windowed \
+            --onedir \
+            --name "${{ env.EXECUTABLE_NAME }}" \
+            --hidden-import "clr" \
+            --hidden-import "pythonnet" \
+            --hidden-import "clr_loader" \
+            --hidden-import "webview.platforms.winforms" \
+            --hidden-import "webview.platforms.cocoa" \
+            --hidden-import "webview.platforms.gtk" \
+            --collect-all "pythonnet" \
+            --collect-all "clr_loader" \
+            --collect-all "webview" \
+            --add-data "static${DATA_SEP}static" \
+            --add-data "models_zips${DATA_SEP}models_zips" \
+            --add-data "app_ai.html${DATA_SEP}." \
+            $ICON_ARG \
+            "${EXTRA_ARGS[@]}" \
             app_ai_desktop.py
 
-      - name: Package build output
+      - name: Package zip build
+        if: matrix.package_kind == 'zip'
         shell: pwsh
         run: |
-          $version = "${{ github.run_number }}"
-          $archive = "OtzariaAI-prerelease-$version-windows.zip"
-          Compress-Archive -Path "dist/OtzariaAI/*" -DestinationPath $archive -Force
+          $archive = "${{ matrix.artifact_name }}"
+          if ("${{ matrix.build_target }}" -eq "macos") {
+            Compress-Archive -Path "dist/${{ env.EXECUTABLE_NAME }}.app" -DestinationPath $archive -Force
+          } else {
+            Compress-Archive -Path "dist/${{ env.EXECUTABLE_NAME }}/*" -DestinationPath $archive -Force
+          }
           "ARCHIVE_NAME=$archive" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Package Linux build
+        if: matrix.package_kind == 'tar.gz'
+        shell: bash
+        run: |
+          archive="${{ matrix.artifact_name }}"
+          tar -czf "$archive" -C dist "${{ env.EXECUTABLE_NAME }}"
+          echo "ARCHIVE_NAME=$archive" >> "$GITHUB_ENV"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4

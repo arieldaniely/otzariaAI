@@ -3,3 +3,21 @@
 /db
 /local_models
 /hf_cache
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Build outputs
+/build/
+/dist/
+/*.zip
+/*.tar.gz
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE / OS noise
+.DS_Store
+Thumbs.db
