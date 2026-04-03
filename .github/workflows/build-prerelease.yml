@@ -1,0 +1,70 @@
+name: Build Windows EXE Prerelease
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build desktop EXE
+        shell: pwsh
+        run: |
+          pyinstaller `
+            --noconfirm `
+            --clean `
+            --windowed `
+            --onedir `
+            --name "OtzariaAI" `
+            --add-data "static;static" `
+            --add-data "models_zips;models_zips" `
+            --add-data "app_ai.html;." `
+            app_ai_desktop.py
+
+      - name: Package build output
+        shell: pwsh
+        run: |
+          $version = "${{ github.run_number }}"
+          $archive = "OtzariaAI-prerelease-$version-windows.zip"
+          Compress-Archive -Path "dist/OtzariaAI/*" -DestinationPath $archive -Force
+          "ARCHIVE_NAME=$archive" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARCHIVE_NAME }}
+          path: ${{ env.ARCHIVE_NAME }}
+
+      - name: Publish prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: experimental-latest
+          name: Experimental Build
+          prerelease: true
+          make_latest: false
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          files: ${{ env.ARCHIVE_NAME }}
+          overwrite_files: true
