@@ -41,7 +41,7 @@ pip install -r requirements.txt
 הרץ את היישום:
 
 ```powershell
-python app_ai_v4.py
+python app_ai.py
 ```
 
 לאחר ההפעלה פתח בדפדפן:
@@ -75,7 +75,7 @@ http://127.0.0.1:8000
 
 ## מבנה הפרויקט
 
-- `app_ai_v4.py` - קובץ היישום הראשי
+- `app_ai.py` - קובץ היישום הראשי
 - `app_ai.html` - קובץ HTML נוסף/ישן של הממשק
 - `static/` - קבצי CSS, JS, פונטים ואייקונים
 - `runtime/` - קבצי אינדקס, SQLite ביניים והגדרות
