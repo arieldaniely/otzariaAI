@@ -1,0 +1,1035 @@
+
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>אוצריא AI</title>
+    <link rel="icon" href="/static/my_icon.png" type="image/png">
+    <link href="/static/bootstrap.min.css" rel="stylesheet">
+    <link href="/static/fonts.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/bootstrap-icons.css">
+    <style>
+        :root { 
+            --primary-color: #1a73e8; 
+            --bg-color: #f8f9fa; 
+            --card-bg: #ffffff; 
+            --sidebar-bg: #f1f3f4; 
+            --text-main: #3c4043; 
+            --border-color: #dee2e6;
+        }
+        [data-bs-theme="dark"] {
+            --bg-color: #0f1012;
+            --card-bg: #1c1d1f;
+            --sidebar-bg: #242527;
+            --text-main: #e2e3e5;
+            --border-color: #343538;
+        }
+        body { background-color: var(--bg-color); font-family: 'Heebo', system-ui, -apple-system, sans-serif; color: var(--text-main); }
+        .serif-text { 
+            font-family: "Frank Ruhl Libre", serif; 
+            line-height: 1.6 !important;
+            font-size: 1.45rem !important;
+            text-rendering: optimizeLegibility;
+            -webkit-font-smoothing: antialiased;
+            /* הגדרות קריטיות לניקוד של ספריא */
+            font-variant-ligatures: none;
+            font-feature-settings: "kern" 1, "mark" 1, "mkmk" 1;
+            -webkit-font-feature-settings: "kern" 1, "mark" 1, "mkmk" 1;
+        }
+        .navbar { background: var(--card-bg); border-bottom: 1px solid var(--border-color); }
+        .search-container { max-width: 800px; margin: 0 auto; }
+        
+        /* תיבת החיפוש המקורית */
+        .search-box { transition: all 0.3s; border: 1px solid var(--border-color); border-radius: 24px; background: var(--card-bg); position: relative; z-index: 101;}
+        .search-box:hover, .search-box:focus-within { box-shadow: 0 1px 8px rgba(0,0,0,.2); border-color: rgba(223,225,229,0); }
+        .search-input { border: none; box-shadow: none !important; font-size: 1.1rem; padding: 12px 20px; border-radius: 24px; background: transparent;}
+        
+        /* תפריט ההשלמה - מחובר באופן חלק לתיבה */
+        .autocomplete-dropdown { 
+            top: 100%; left: 0; right: 0; 
+            margin-top: -20px; padding-top: 20px; 
+            background: var(--card-bg); border-radius: 0 0 24px 24px;
+            border: 1px solid var(--border-color); border-top: none; 
+            box-shadow: 0 4px 6px rgba(32,33,36,.28); 
+            z-index: 100; 
+            max-height: 300px; overflow-y: auto; overflow-x: hidden;
+            z-index: 100; 
+                        opacity: 0; visibility: hidden; transform: translateY(-10px);
+            transition: all 0.2s ease-in-out;
+        }
+        .autocomplete-dropdown.show-dropdown {
+            opacity: 1; visibility: visible; transform: translateY(0);
+        }
+        .autocomplete-item { padding: 12px 20px; cursor: pointer; display: flex; align-items: center; gap: 12px; color: var(--text-main); font-size: 1.05rem; transition: background 0.1s; }
+        .autocomplete-item:hover, .autocomplete-item.active { background-color: var(--sidebar-bg); }
+
+        .result-card { background: var(--card-bg); border-radius: 12px; padding: 20px; margin-bottom: 16px; border: 1px solid var(--border-color); transition: transform 0.2s; animation: fadeInUp 0.5s ease-out both; }
+        .result-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        .source-badge { background-color: #e7f1ff; color: #0d6efd; padding: 4px 10px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; }
+        [data-bs-theme="dark"] .source-badge { background-color: rgba(13, 115, 232, 0.2); color: #8ab4f8; }
+        mark { background-color: #fff3cd; padding: 0 2px; border-radius: 2px; color: #333; font-family: inherit; }
+        [data-bs-theme="dark"] mark { background-color: #4d3800; color: #fff; }
+        .upload-area { border: 2px dashed var(--border-color); border-radius: 12px; padding: 2rem; text-align: center; transition: all 0.2s; background: var(--card-bg); cursor:pointer;}
+        .upload-area:hover { border-color: var(--primary-color); background-color: #f8f9ff; }
+        
+        /* Custom styling for Settings Tabs */
+        .settings-sidebar { background-color: var(--sidebar-bg); border-left: 1px solid var(--border-color); padding: 15px 0; }
+        #settingsTabs .nav-link { 
+            color: var(--text-main); border: none; padding: 12px 24px; transition: all 0.2s; 
+            border-radius: 0 24px 24px 0; margin: 0; text-align: right; font-weight: 500; 
+            display: flex; align-items: center; gap: 12px; 
+        }
+        #settingsTabs .nav-link:hover { background-color: rgba(0,0,0,0.04); }
+        [data-bs-theme="dark"] #settingsTabs .nav-link:hover { background-color: rgba(255,255,255,0.04); }
+        #settingsTabs .nav-link.active { color: var(--primary-color); background-color: #e8f0fe; font-weight: 700; }
+        [data-bs-theme="dark"] #settingsTabs .nav-link.active { background-color: var(--bg-color); color: #8ab4f8; border-right: 3px solid #8ab4f8; }
+        #settingsTabs .nav-link i { font-size: 1.2rem; }
+        
+        .settings-content { padding: 40px; background: var(--card-bg); height: 65vh; overflow-y: auto; }
+        .settings-header { margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color); }
+        .settings-header h5 { color: var(--text-main); letter-spacing: -0.5px; }
+        .weight-card { border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; margin-bottom: 16px; background: var(--bg-color); transition: all 0.2s; }
+        .weight-card:hover { box-shadow: 0 1px 2px 0 rgba(60,64,67,.30), 0 1px 3px 1px rgba(60,64,67,.15); }
+        .weight-label { font-weight: 600; font-size: 0.95rem; }
+        .weight-value { font-weight: bold; color: var(--primary-color); font-family: monospace; font-size: 1.1rem;}
+        .form-range::-webkit-slider-thumb { background: var(--primary-color); }
+        
+        .did-you-mean { font-size: 1.1rem; color: #dd4b39; }
+        .did-you-mean a { color: #1a0dab; font-weight: bold; text-decoration: none; font-style: italic;}
+        .did-you-mean a:hover { text-decoration: underline; }
+        [data-bs-theme="dark"] .did-you-mean a { color: #8ab4f8; }
+        [data-bs-theme="dark"] .did-you-mean { color: #ff6b6b; }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-color); }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+        
+        /* Loading Spinner Overlay */
+        #loading-indicator {
+            display: none; 
+            position: fixed; 
+            top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            background-color: var(--bg-color); 
+            z-index: 9999; opacity: 0.8;
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center; 
+        }
+        #loading-indicator.active { display: flex; }
+        
+        /* עיצוב דרופדאון ספרים */
+        .books-dropdown-menu { width: 300px; max-height: 400px; overflow: hidden; flex-direction: column; background-color: var(--card-bg); border: 1px solid var(--border-color); }
+        .books-dropdown-menu { width: 450px !important; max-height: 500px; overflow: hidden; flex-direction: column; background-color: var(--card-bg); border: 1px solid var(--border-color); }
+        .tree-node .toggle-icon { cursor: pointer; transition: transform 0.2s; display: inline-block; width: 20px; text-align: center; }
+        .tree-node .toggle-icon.expanded { transform: rotate(-90deg); }
+        .node-content { border-right: 1px solid var(--border-color); margin-right: 10px; }
+        .cursor-pointer { cursor: pointer; }
+        
+        .home-view .books-dropdown-menu { max-height: 250px; }
+        .books-dropdown-menu.show { display: flex; }
+        .books-anim-wrapper { animation: dropdownFadeIn 0.2s ease-out; display: flex; flex-direction: column; width: 100%; flex: 1; min-height: 0; }
+        @keyframes dropdownFadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        #bookFilterBtn { position: relative; z-index: 10; }
+        .books-list-container { flex: 1; overflow-y: auto; overflow-x: hidden; }
+        .book-item { display: flex; align-items: center; text-align: right; gap: 8px; color: var(--text-main); }
+        .book-item:hover { background-color: var(--sidebar-bg); }
+        .book-item .form-check-input { float: none; margin: 0; }
+        .book-item label { cursor: pointer; flex: 1; min-width: 0; }
+        
+        .settings-btn { transition: all 0.2s; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; text-decoration: none; color: var(--text-main) !important; }
+        .settings-btn:hover { background-color: var(--sidebar-bg); color: var(--primary-color) !important; }
+        #status-pill { background-color: var(--sidebar-bg) !important; border-color: var(--border-color) !important; }
+        .highlight-target { background-color: #fff3cd; font-weight: bold; padding: 2px 8px; border-radius: 4px; display: block; margin-right: -8px; margin-left: -8px; }
+        [data-bs-theme="dark"] .highlight-target { background-color: rgba(255, 193, 7, 0.2); color: #fff; border-right: 4px solid #ffc107; }
+        
+        /* Tree View Styles */
+        .tree-container { max-height: 60vh; overflow-y: auto; padding: 10px; }
+        .tree-ul { list-style: none; padding-right: 15px; margin: 0; }
+        .tree-node { margin-bottom: 2px; }
+        .tree-content { display: flex; align-items: center; padding: 4px 8px; border-radius: 6px; transition: background 0.1s; }
+        .tree-content:hover { background-color: var(--sidebar-bg); }
+        .tree-toggle { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #6c757d; transition: transform 0.15s; }
+        .tree-toggle.expanded { transform: rotate(-90deg); color: var(--text-main); }
+        .tree-children { display: none; border-right: 1px solid var(--border-color); margin-right: 11px; }
+        .tree-children.show { display: block; }
+        
+        /* תיקון מצב כהה לעץ */
+        [data-bs-theme="dark"] .modal-header, [data-bs-theme="dark"] .modal-footer { background-color: var(--sidebar-bg) !important; }
+        [data-bs-theme="dark"] .tree-search-header { background-color: var(--card-bg) !important; }
+        [data-bs-theme="dark"] .tree-content:hover { background-color: rgba(255,255,255,0.05); }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg sticky-top">
+    <div class="container">
+        <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="/">
+            <img src="/static/my_icon.png" alt="Logo" width="30" height="30" class="d-inline-block align-text-top">
+            <span>אוצריא <small class="text-muted fw-normal">AI</small></span>
+        </a>
+        
+        <div class="d-flex align-items-center gap-3">
+            <div class="d-flex align-items-center small bg-light px-3 py-1 rounded-pill border" id="status-pill" title="סטטוס מערכת">
+                <div id="status-dot" class="rounded-circle bg-secondary me-2" style="width: 8px; height: 8px;"></div>
+                <span id="status-text" class="text-muted">טוען...</span>
+                <span id="idx-count" class="ms-2 fw-bold">{{ idx_count }}</span>
+            </div>
+            {% if model_loaded %}
+            <button class="btn btn-link text-secondary p-0 fs-5 settings-btn" id="themeToggle" title="החלף מצב תצוגה"><i class="bi bi-moon-stars"></i></button>
+            <button class="btn btn-link text-secondary p-0 fs-5 settings-btn" data-bs-toggle="modal" data-bs-target="#settingsModal" title="הגדרות"><i class="bi bi-gear"></i></button>
+            {% endif %}
+        </div>
+    </div>
+</nav>
+
+<div class="container py-5 search-container {% if not query %}home-view{% endif %}">
+    {% if not model_loaded or not db_exists %}
+    <div class="text-center mb-5"><h2 class="fw-bold mb-3">ברוך הבא למנוע החיפוש החכם</h2><p class="text-muted">אנא טען את המקורות בממשק ההגדרות למעלה כדי להתחיל.</p></div>
+    <div class="text-center"><button class="btn btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#settingsModal">פתח הגדרות מערכת</button></div>
+    {% else %}
+    
+    <div class="text-center mb-4 {% if query %}d-none{% endif %}">
+        <h1 class="display-4 fw-bold mb-3"><span style="color: #4285f4">O</span><span style="color: #ea4335">t</span><span style="color: #fbbc05">z</span><span style="color: #4285f4">a</span><span style="color: #34a853">r</span><span style="color: #ea4335">i</span><span style="color: #4285f4">a</span> AI</h1>
+        <p class="text-muted mb-4">מנוע חיפוש סמנטי לארון הספרים היהודי</p>
+    </div>
+
+    <form action="/" method="get" class="mb-4" id="searchForm">
+        
+        <div class="position-relative mx-auto" style="max-width: 600px; z-index: 1000;">
+            <div class="search-box d-flex align-items-center shadow-sm" id="searchBoxContainer">
+                <button type="submit" class="btn border-0 text-muted ps-3"><i class="bi bi-search"></i></button>
+                <input type="text" id="searchInput" name="q" class="form-control search-input" placeholder="חפש משהו (למשל: הלכות שבת)..." value="{{ query or '' }}" autocomplete="off" autofocus>
+                {% if query %}
+                <a href="/" class="btn border-0 text-muted pe-3" title="נקה"><i class="bi bi-x-lg"></i></a>
+                {% endif %}
+            </div>
+            
+            <div id="autocompleteDropdown" class="autocomplete-dropdown position-absolute">
+                </div>
+        </div>
+        
+        <!-- Hidden inputs for selected books -->
+        <div id="selectedBooksInputs">
+            {% for bid in selected_books %}
+            <input type="hidden" name="book_id" value="{{ bid }}">
+            {% endfor %}
+        </div>
+
+        <div class="d-flex justify-content-center mt-3">
+            <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#treeModal">
+                <i class="bi bi-journal-bookmark me-1"></i> בחירת ספרים {% if selected_books %}<span class="badge bg-primary rounded-pill ms-1">{{ selected_books|length }}</span>{% endif %}
+            </button>
+        </div>
+    </form>
+
+    {% if did_you_mean %}
+    <div class="mb-4 did-you-mean text-center">
+        האם התכוונת ל: <a href="/?q={{ did_you_mean }}">{{ did_you_mean }}</a> ?
+    </div>
+    {% endif %}
+
+    {% if query %}
+        <div class="d-flex justify-content-between align-items-center mb-3 px-1 mt-4 border-bottom pb-2">
+            <h6 class="mb-0 text-muted">הוצגו {{ results|length }} תוצאות (מתוך מאגר של {{ idx_count }} רשומות)</h6>
+        </div>
+
+        {% if not results %}
+             <div class="text-center py-5">
+                <div class="mb-3"><i class="bi bi-search display-1 text-light"></i></div>
+                <h4 class="text-muted">לא נמצאו תוצאות</h4>
+                <p class="text-muted small">נסה לחפש במילים אחרות</p>
+             </div>
+        {% endif %}
+
+        {% for r in results %}
+        <div class="result-card" style="cursor: pointer;" onclick="showContext({{ r.book_id }}, {{ r.line_index }}, {{ r.end_line }}, '{{ query }}')">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <span class="source-badge"><i class="bi bi-journal-text me-1"></i> {{ r.source }}</span>
+                
+                <div class="d-flex align-items-center gap-3">
+                    <div class="feedback-group d-flex gap-1" id="fb-{{ loop.index }}" onclick="event.stopPropagation()">
+                        <button class="btn btn-sm btn-outline-success border-0 rounded-circle px-2" title="תוצאה מדויקת - תלמד מזה" onclick='sendFeedback(1, {{ r.features|tojson }}, "fb-{{ loop.index }}")'><i class="bi bi-hand-thumbs-up"></i></button>
+                        <button class="btn btn-sm btn-outline-danger border-0 rounded-circle px-2" title="תוצאה גרועה - תקן את האלגוריתם" onclick='sendFeedback(-1, {{ r.features|tojson }}, "fb-{{ loop.index }}")'><i class="bi bi-hand-thumbs-down"></i></button>
+                    </div>
+                    <small class="text-muted" title="ציון רלוונטיות">{{ "%.0f"|format(r.score * 100) }}%</small>
+                </div>
+            </div>
+            <div class="serif-text">
+                {{ r.text | highlight(expanded_query) | safe }}
+            </div>
+        </div>
+        {% endfor %}
+    {% endif %}
+    {% endif %}
+</div>
+
+<div class="modal fade" id="settingsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content border-0 shadow-lg">
+            <form action="/setup" method="post">
+                <input type="hidden" name="settings_submitted" value="1">
+                <div class="modal-header border-bottom px-4">
+                    <h5 class="modal-title fw-bold d-flex align-items-center"><i class="bi bi-gear-fill me-2 text-primary"></i> הגדרות מערכת</h5>
+                    <button type="button" class="btn-close ms-0 me-auto" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="row g-0">
+                        <div class="col-md-3 settings-sidebar">
+                            <div class="nav flex-column nav-pills" id="settingsTabs" role="tablist">
+                                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#general" type="button"><i class="bi bi-database-fill-gear"></i> מקורות נתונים</button>
+                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#search" type="button"><i class="bi bi-sliders"></i> פרמטרי חיפוש</button>
+                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#hybrid" type="button"><i class="bi bi-cpu-fill"></i> אלגוריתם ודירוג</button>
+                            </div>
+                        </div>
+                        <div class="col-md-9 settings-content">
+                            <div class="tab-content" id="settingsTabsContent">
+                                <div class="tab-pane fade show active" id="general">
+                                    <div class="settings-header d-flex justify-content-between align-items-center"><div class="w-75"><h5 class="fw-bold mb-1">ניהול מקורות ומודלים</h5><p class="text-muted small mb-0">הגדרת קבצי המידע והמודלים עליהם המערכת מתבססת</p></div><i class="bi bi-database-check fs-2 text-primary opacity-25"></i></div>
+                                    <div class="mb-4">
+                                        <label class="form-label small fw-bold text-muted">נתיב בסיס נתונים (SQLite DB)</label>
+                                        <div class="input-group shadow-sm">
+                                            <input type="text" id="db_path_input" name="db_path" class="form-control border-end-0" value="{{ db_path }}" placeholder="נתיב לקובץ seforim.db...">
+                                            <button type="button" class="btn btn-outline-secondary border-start-0" onclick="browsePath('db')"><i class="bi bi-folder2-open"></i></button>
+                                        </div>
+                                    </div>
+                                    <div class="row g-3 mb-4">
+                                        <div class="col-md-6"><label class="form-label small fw-bold text-muted">גרסת מודל</label>
+                                            <select name="edition" class="form-select">{% for e in ["v1","v2","v3"] %}<option value="{{ e }}" {% if e == edition %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
+                                        </div>
+                                        <div class="col-md-6"><label class="form-label small fw-bold text-muted">מקור מודל</label>
+                                            <select name="model_source" class="form-select"><option value="zip" {% if model_source == "zip" %}selected{% endif %}>ZIP מקומי</option><option value="hf" {% if model_source == "hf" %}selected{% endif %}>HuggingFace</option></select>
+                                        </div>
+                                    </div>
+                                    <div class="mb-4">
+                                        <label class="form-label small fw-bold text-muted">נתיב ZIP (אופציונלי)</label>
+                                        <div class="input-group shadow-sm">
+                                            <input type="text" id="zip_path_input" name="zip_path" class="form-control border-end-0" value="{{ zip_path or '' }}" placeholder="models_zips/...">
+                                            <button type="button" class="btn btn-outline-secondary border-start-0" onclick="browsePath('zip')"><i class="bi bi-folder2-open"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="tab-pane fade" id="search">
+                                    <div class="settings-header"><h5 class="fw-bold mb-1">הגדרות אינדוקס ותצוגה</h5><p class="text-muted small mb-0">שליטה על אופן חיתוך הטקסט וכמות התוצאות</p></div>
+                                    
+                                    <div class="card mb-4 border-0 shadow-sm" style="background-color: var(--sidebar-bg);">
+                                        <div class="card-body">
+                                            <h6 class="fw-bold mb-3 text-primary"><i class="bi bi-layers me-2"></i>בניית האינדקס (דורש טעינה מחדש)</h6>
+                                            <div class="mb-3">
+                                                <label class="form-label small fw-bold text-muted">מספר רשומות מקסימלי</label>
+                                                <input type="number" name="max_chunks" class="form-control" value="{{ max_chunks }}">
+                                                <div class="form-text">כמות המקטעים שיישלפו מהספרים. ערך גבוה משפר כיסוי אך מאט את החיפוש.</div>
+                                            </div>
+                                            <div class="row g-3">
+                                                <div class="col-md-4"><label class="form-label small fw-bold text-muted">מילים למקטע</label><input type="number" name="ideal_chunk_words" class="form-control" value="{{ ideal_chunk_words }}"></div>
+                                                <div class="col-md-4"><label class="form-label small fw-bold text-muted">מקסימום מילים</label><input type="number" name="max_chunk_words" class="form-control" value="{{ max_chunk_words }}"></div>
+                                                <div class="col-md-4"><label class="form-label small fw-bold text-muted">חפיפת מילים</label><input type="number" name="overlap_words" class="form-control" value="{{ overlap_words }}"></div>
+                                            </div>
+                                            
+                                            <div class="mt-4">
+                                                <label class="form-label small fw-bold text-muted">ספרים להכנסה לאינדקס (ברירת מחדל: הכל)</label>
+                                                <div class="p-2 border rounded" style="max-height: 250px; overflow-y: auto; background: var(--bg-color);">
+                                                    <input type="text" id="indexTreeSearch" class="form-control form-control-sm mb-2" placeholder="חפש ספר או קטגוריה..." onkeyup="filterIndexTree()">
+                                                    <div class="d-flex justify-content-between mb-2">
+                                                        <div>
+                                                            <a href="#" class="small text-decoration-none me-2" onclick="expandIndexAll(true); return false;">הרחב הכל</a>
+                                                            <a href="#" class="small text-decoration-none" onclick="expandIndexAll(false); return false;">צמצם הכל</a>
+                                                        </div>
+                                                        <div>
+                                                            <a href="#" class="small text-decoration-none me-2" onclick="checkIndexAll(true); return false;">בחר הכל</a>
+                                                            <a href="#" class="small text-decoration-none text-danger" onclick="checkIndexAll(false); return false;">נקה הכל</a>
+                                                        </div>
+                                                    </div>
+                                                    <div id="indexTreeRoot" class="tree-container pe-0">
+                                                        <div class="text-center py-3 text-muted small">טוען עץ ספרים...</div>
+                                                    </div>
+                                                </div>
+                                                <div class="form-text mt-1" id="indexSelectionCount">כל הספרים נבחרו</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="card border-0 shadow-sm" style="background-color: var(--sidebar-bg);">
+                                        <div class="card-body">
+                                            <h6 class="fw-bold mb-3 text-success"><i class="bi bi-eye me-2"></i>הגדרות תצוגה</h6>
+                                            <div class="row g-3">
+                                                <div class="col-md-6"><label class="form-label small fw-bold text-muted">תוצאות להצגה (Top K)</label><input type="number" name="top_k" min="1" max="200" class="form-control" value="{{ top_k }}"></div>
+                                                <div class="col-md-6"><label class="form-label small fw-bold text-muted">סף רלוונטיות מינימלי (%)</label><input type="number" name="min_score" min="0" max="100" step="1" class="form-control" value="{{ min_score }}"></div>
+                                            </div>
+                                            <div class="form-text mt-2">תוצאות עם ציון נמוך מהסף לא יוצגו כלל.</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="tab-pane fade" id="hybrid">
+                                    <div class="settings-header d-flex justify-content-between align-items-center">
+                                        <div><h5 class="fw-bold mb-1">כיוונון אלגוריתם הדירוג</h5><p class="text-muted small mb-0">השפעה על אופן חישוב הציון לכל תוצאה</p></div>
+                                        <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" onclick="setRecommendedWeights()"><i class="bi bi-stars me-1"></i> שחזר מומלצים</button>
+                                    </div>
+                                    
+                                    {% for key, val, label, rec in [("w_vec", w_vec, "חיפוש סמנטי (Vector)", "0.35"), ("w_bm", w_bm, "חיפוש טקסטואלי + הרחבה", "0.25"), ("w_overlap", w_overlap, "חפיפת מילים", "0.25"), ("w_phrase", w_phrase, "ביטוי מלא", "0.10"), ("w_proximity", w_proximity, "קרבה (Proximity)", "0.05")] %}
+                                    <div class="weight-card">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <div class="weight-label">{{ label }} <span class="badge bg-light text-muted border ms-2 fw-normal">מומלץ: {{ rec }}</span></div>
+                                            <div class="weight-value" id="val_{{ key }}">{{ val }}</div>
+                                        </div>
+                                        <input type="range" min="0" max="1" step="0.01" name="{{ key }}" value="{{ val }}" class="form-range" oninput="updateWeight('{{ key }}', this.value)" onchange="autoNormalize()">
+                                    </div>
+                                    {% endfor %}
+
+                                    <div class="mt-4 pt-3 border-top">
+                                        <h6 class="fw-bold mb-3">גורמי דעיכה לקרבה (Proximity Decay)</h6>
+                                        <p class="text-muted small mb-3">קובע כמה משקל לתת להופעות נוספות של מילות החיפוש בתוך אותו מקטע.</p>
+                                        <div class="row g-3">
+                                            {% for key, val, label in [("decay_2", decay_2, "מילה 2"), ("decay_3", decay_3, "מילה 3"), ("decay_4", decay_4, "מילה 4+")] %}
+                                            <div class="col-md-4">
+                                                <div class="p-2 border rounded" style="background-color: var(--sidebar-bg);">
+                                                    <label class="form-label small mb-1">{{ label }}</label>
+                                                    <div class="d-flex align-items-center gap-2"><input type="range" min="0" max="1" step="0.05" name="{{ key }}" value="{{ val }}" class="form-range flex-grow-1" oninput="document.getElementById('val_{{ key }}').innerText = parseFloat(this.value).toFixed(2)"><span class="small fw-bold text-primary" id="val_{{ key }}" style="min-width: 35px;">{{ "%.2f"|format(val|float) }}</span></div>
+                                                </div>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mt-4 p-3 rounded-3 d-flex justify-content-between align-items-center border" style="background-color: var(--sidebar-bg);">
+                                        <div class="total-indicator fw-bold">סכום משקלים: <span id="total_weight" class="text-primary">0.00</span></div>
+                                        <span id="total_badge" class="badge bg-secondary px-3 py-2 rounded-pill">...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-top px-4">
+                    <button type="button" class="btn btn-link text-muted text-decoration-none px-4" data-bs-dismiss="modal">ביטול</button>
+                    <button type="submit" class="btn btn-primary px-5 rounded-pill fw-bold shadow-sm"><i class="bi bi-check-lg me-1"></i> שמור שינויים</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Tree Selection Modal -->
+<div class="modal fade" id="treeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header border-bottom">
+                <h5 class="modal-title fw-bold"><i class="bi bi-collection me-2 text-primary"></i>בחירת ספרים לחיפוש</h5>
+                <button type="button" class="btn-close ms-0 me-auto" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="p-3 border-bottom sticky-top tree-search-header" style="background-color: var(--card-bg);">
+                    <input type="text" id="treeSearch" class="form-control" placeholder="חפש ספר או קטגוריה..." onkeyup="filterTree()">
+                    <div class="d-flex justify-content-between mt-2">
+                        <div>
+                            <a href="#" class="small text-decoration-none me-3" onclick="expandAll(true); return false;">הרחב הכל</a>
+                            <a href="#" class="small text-decoration-none" onclick="expandAll(false); return false;">צמצם הכל</a>
+                        </div>
+                        <div>
+                            <a href="#" class="small text-decoration-none me-3" onclick="checkAll(true); return false;">בחר הכל</a>
+                            <a href="#" class="small text-decoration-none text-danger" onclick="checkAll(false); return false;">נקה הכל</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="tree-container" id="treeRoot">
+                    <div class="text-center py-5" id="treeLoader">
+                        <div class="spinner-border text-primary mb-2"></div>
+                        <div class="text-muted">בונה את עץ הספרים...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <span id="selectionCount" class="text-muted ms-auto small">
+                    {% if selected_books %}{{ selected_books|length }} ספרים נבחרו{% else %}כל הספרים נבחרו{% endif %}
+                </span>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
+                <button type="button" class="btn btn-primary px-4" onclick="applyTreeSelection()">החל בחירה</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="contextModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header border-bottom" style="background-color: var(--sidebar-bg);">
+                <h5 class="modal-title fw-bold" id="contextTitle">טעינת הקשר...</h5>
+                <button type="button" class="btn-close ms-0 me-auto" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4" id="contextBody">
+                <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/static/bootstrap.bundle.min.js"></script>
+<script>
+    // --- Theme Management ---
+    const themeToggle = document.getElementById('themeToggle');
+    const htmlElement = document.documentElement;
+
+    function setTheme(theme) {
+        htmlElement.setAttribute('data-bs-theme', theme);
+        localStorage.setItem('theme', theme);
+        if (themeToggle) {
+            themeToggle.innerHTML = theme === 'dark' ? '<i class="bi bi-sun"></i>' : '<i class="bi bi-moon-stars"></i>';
+        }
+    }
+
+    const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    setTheme(savedTheme);
+
+    if (themeToggle) {
+        themeToggle.addEventListener('click', () => setTheme(htmlElement.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark'));
+    }
+
+    // --- Autocomplete JS (Smooth & Contextual) ---
+    const searchInput = document.getElementById('searchInput');
+    const autocompleteDropdown = document.getElementById('autocompleteDropdown');
+    const searchBoxContainer = document.getElementById('searchBoxContainer');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const searchForm = document.getElementById('searchForm');
+
+    function showLoading() {
+        if(loadingIndicator) loadingIndicator.classList.add('active');
+        const btn = document.querySelector('#searchBoxContainer button[type="submit"]');
+        if(btn) btn.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div>';
+    }
+
+    window.addEventListener('pageshow', function(event) {
+        if (loadingIndicator) loadingIndicator.classList.remove('active');
+        const btn = document.querySelector('#searchBoxContainer button[type="submit"]');
+        if(btn) btn.innerHTML = '<i class="bi bi-search"></i>';
+    });
+
+    if(searchForm) searchForm.addEventListener('submit', showLoading);
+
+    let debounceTimer;
+    let currentFocus = -1;
+
+    if(searchInput) {
+        searchInput.addEventListener('keydown', function(e) {
+            let x = autocompleteDropdown.getElementsByClassName("autocomplete-item");
+            if (x.length > 0) {
+                if (e.key === 'ArrowDown') {
+                    currentFocus++;
+                    addActive(x);
+                } else if (e.key === 'ArrowUp') {
+                    currentFocus--;
+                    addActive(x);
+                } else if (e.key === 'Enter') {
+                    if (currentFocus > -1) {
+                        e.preventDefault();
+                        x[currentFocus].click();
+                    }
+                }
+            }
+        });
+
+        function addActive(x) {
+            if (!x) return false;
+            removeActive(x);
+            if (currentFocus >= x.length) currentFocus = 0;
+            if (currentFocus < 0) currentFocus = (x.length - 1);
+            x[currentFocus].classList.add("active");
+        }
+        function removeActive(x) {
+            for (var i = 0; i < x.length; i++) {
+                x[i].classList.remove("active");
+            }
+        }
+
+        searchInput.addEventListener('input', function() {
+            currentFocus = -1;
+            clearTimeout(debounceTimer);
+            const val = this.value.trim();
+            
+            if(val.length < 2) { 
+                autocompleteDropdown.classList.remove('show-dropdown'); 
+                searchBoxContainer.style.borderRadius = "24px";
+                return; 
+            }
+            
+            debounceTimer = setTimeout(() => {
+                fetch('/api/autocomplete?q=' + encodeURIComponent(val))
+                .then(r => r.json())
+                .then(suggestions => {
+                    if(suggestions.length > 0) {
+                        autocompleteDropdown.innerHTML = suggestions.map(s => 
+                            `<div class="autocomplete-item"><i class="bi bi-search text-muted"></i> ${s}</div>`
+                        ).join('');
+                        autocompleteDropdown.classList.add('show-dropdown');
+                        searchBoxContainer.style.borderRadius = "24px 24px 0 0";
+                        
+                        document.querySelectorAll('.autocomplete-item').forEach(item => {
+                            item.addEventListener('click', function() {
+                                searchInput.value = this.innerText.trim();
+                                showLoading();
+                                document.getElementById('searchForm').submit();
+                            });
+                        });
+                    } else {
+                        autocompleteDropdown.classList.remove('show-dropdown');
+                        searchBoxContainer.style.borderRadius = "24px";
+                    }
+                });
+            }, 150); 
+        });
+
+        document.addEventListener('click', function(e) {
+            if(!searchBoxContainer.contains(e.target) && !autocompleteDropdown.contains(e.target)) {
+                autocompleteDropdown.classList.remove('show-dropdown');
+                searchBoxContainer.style.borderRadius = "24px";
+            }
+        });
+    }
+
+    // --- Feedback Machine Learning Loop ---
+    function sendFeedback(rating, features, elementId) {
+        fetch('/api/feedback', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ rating: rating, features: features })
+        }).then(res => res.json()).then(data => {
+            if(data.status === 'ok') {
+                document.getElementById(elementId).innerHTML = '<span class="text-success small fw-bold"><i class="bi bi-check2-all me-1"></i> האלגוריתם למד!</span>';
+                // Update Settings sliders in background
+                Object.keys(data.new_weights).forEach(k => {
+                    let s = document.querySelector(`[name='${k}']`);
+                    if(s) { s.value = data.new_weights[k]; document.getElementById('val_' + k).innerText = parseFloat(data.new_weights[k]).toFixed(2); }
+                });
+                if(typeof updateTotal === 'function') updateTotal();
+            }
+        });
+    }
+
+    // --- Settings UI ---
+    function browsePath(type) {
+        const endpoint = type === 'db' ? '/api/browse_db' : '/api/browse_zip';
+        const inputId = type === 'db' ? 'db_path_input' : 'zip_path_input';
+        
+        const btn = document.querySelector(`button[onclick="browsePath('${type}')"]`);
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        btn.disabled = true;
+
+        fetch(endpoint)
+            .then(r => r.json())
+            .then(data => { if(data.path) document.getElementById(inputId).value = data.path; })
+            .catch(e => console.error(e))
+            .finally(() => { btn.innerHTML = originalHtml; btn.disabled = false; });
+    }
+
+    const WEIGHT_FIELDS = ["w_vec", "w_bm", "w_overlap", "w_phrase", "w_proximity"];
+    const RECOMMENDED = { "w_vec": 0.35, "w_bm": 0.25, "w_overlap": 0.25, "w_phrase": 0.10, "w_proximity": 0.05 };
+    const DECAY_RECOMMENDED = { "decay_2": 0.75, "decay_3": 0.35, "decay_4": 0.05 };
+    function updateWeight(name, value) { document.getElementById('val_' + name).innerText = parseFloat(value).toFixed(2); updateTotal(); }
+    function updateTotal() {
+        let total = 0;
+        WEIGHT_FIELDS.forEach(f => { let el = document.querySelector(`[name='${f}']`); if(el) total += parseFloat(el.value); });
+        let totalEl = document.getElementById("total_weight"); if(totalEl) totalEl.innerText = total.toFixed(2);
+        const badge = document.getElementById("total_badge");
+        if(badge) {
+            if (Math.abs(total - 1.00) < 0.001) { badge.className = "badge bg-success px-3 py-2"; badge.innerHTML = "<i class='bi bi-check-circle me-1'></i> מנורמל (1.00)"; } 
+            else { badge.className = "badge bg-warning text-dark px-3 py-2"; badge.innerHTML = "<i class='bi bi-arrow-clockwise me-1'></i> ינורמל בעזיבה"; }
+        }
+    }
+    function autoNormalize() {
+        let total = 0;
+        WEIGHT_FIELDS.forEach(f => { let el = document.querySelector(`[name='${f}']`); if(el) total += parseFloat(el.value); });
+        if (total === 0) return;
+        WEIGHT_FIELDS.forEach(f => { let el = document.querySelector(`[name='${f}']`); if(el) { let n = (parseFloat(el.value) / total).toFixed(2); el.value = n; document.getElementById('val_' + f).innerText = n; }});
+        updateTotal();
+    }
+    function setRecommendedWeights() { 
+        WEIGHT_FIELDS.forEach(f => { let el = document.querySelector(`[name='${f}']`); if(el) { el.value = RECOMMENDED[f]; document.getElementById('val_' + f).innerText = RECOMMENDED[f].toFixed(2); }}); 
+        Object.keys(DECAY_RECOMMENDED).forEach(f => {
+            let el = document.querySelector(`[name='${f}']`);
+            if(el) { el.value = DECAY_RECOMMENDED[f]; document.getElementById('val_' + f).innerText = DECAY_RECOMMENDED[f].toFixed(2); }
+        });
+        updateTotal(); 
+    }
+    document.getElementById('settingsModal').addEventListener('show.bs.modal', function() {
+        updateTotal();
+        loadIndexTree();
+    });
+
+    // --- Books Filter JS ---
+    let treeLoaded = false;
+    const selectedBooksAtStart = {{ selected_books|tojson }};
+
+    function loadTree() {
+        if (treeLoaded) return;
+        const root = document.getElementById('treeRoot');
+        
+        fetch('/api/get_tree')
+            .then(r => r.json())
+            .then(data => {
+                if (!data || data.length === 0) {
+                    root.innerHTML = '<div class="alert alert-warning m-3">לא ניתן היה לטעון את העץ. וודא שהגדרת מסד נתונים תקין.</div>';
+                    return;
+                }
+                root.innerHTML = renderTreeJS(data);
+                treeLoaded = true;
+                updateSelectionCount();
+            })
+            .catch(err => {
+                root.innerHTML = '<div class="alert alert-danger m-3">שגיאה בטעינת העץ.</div>';
+            });
+    }
+
+    function renderTreeJS(nodes) {
+        let html = '<ul class="tree-ul">';
+        nodes.forEach(node => {
+            const hasChildren = (node.children && node.children.length > 0) || (node.books && node.books.length > 0);
+            html += `<li class="tree-node">
+                <div class="tree-content">
+                    <i class="bi bi-chevron-left tree-toggle ${hasChildren ? '' : 'invisible'}" onclick="toggleNode(this)"></i>
+                    <div class="form-check mb-0 flex-grow-1 ms-1">
+                        <input class="form-check-input cat-checkbox" type="checkbox" id="cat_${node.id}" onchange="toggleCategory(this)">
+                        <label class="form-check-label small fw-bold cursor-pointer w-100" for="cat_${node.id}">
+                            <i class="bi bi-folder2-open text-warning me-1"></i> ${node.name}
+                        </label>
+                    </div>
+                </div>
+                <div class="tree-children">
+                    ${node.children ? renderTreeJS(node.children) : ''}
+                    ${node.books ? node.books.map(book => `
+                        <div class="tree-content ms-4">
+                            <div class="form-check mb-0 flex-grow-1">
+                                <input class="form-check-input book-checkbox" type="checkbox" value="${book.id}" id="b_${book.id}" ${selectedBooksAtStart.includes(book.id) ? 'checked' : ''}>
+                                <label class="form-check-label small text-truncate d-block cursor-pointer" for="b_${book.id}" title="${book.title}">
+                                    <i class="bi bi-book text-secondary me-1"></i> ${book.title}
+                                </label>
+                            </div>
+                        </div>
+                    `).join('') : ''}
+                </div>
+            </li>`;
+        });
+        html += '</ul>';
+        return html;
+    }
+
+    // Load tree when modal is shown
+    document.getElementById('treeModal').addEventListener('show.bs.modal', loadTree);
+
+    function toggleNode(el) {
+        el.classList.toggle('expanded');
+        el.classList.toggle('bi-chevron-left');
+        el.classList.toggle('bi-chevron-down');
+        const content = el.closest('.tree-node').querySelector('.tree-children');
+        if (content) content.classList.toggle('show');
+    }
+
+    function toggleCategory(checkbox) {
+        const isChecked = checkbox.checked;
+        const node = checkbox.closest('.tree-node');
+        const content = node.querySelector('.tree-children');
+        if (content) {
+            const childCheckboxes = content.querySelectorAll('input[type="checkbox"]');
+            childCheckboxes.forEach(cb => {
+                cb.checked = isChecked;
+            });
+        }
+        updateSelectionCount();
+    }
+
+    function filterTree() {
+        const input = document.getElementById('treeSearch');
+        const filter = input.value.toLowerCase();
+        const items = document.querySelectorAll('.tree-content');
+        const nodes = document.querySelectorAll('.tree-node');
+        
+        if (!filter) {
+            document.querySelectorAll('.tree-children').forEach(nc => nc.classList.remove('show'));
+            document.querySelectorAll('.tree-toggle').forEach(ti => {
+                ti.classList.remove('expanded', 'bi-chevron-down');
+                ti.classList.add('bi-chevron-left');
+            });
+            items.forEach(i => {
+                i.style.display = '';
+            });
+            nodes.forEach(n => n.style.display = '');
+            return;
+        }
+
+        items.forEach(item => {
+            const text = item.innerText.toLowerCase();
+            const isMatch = text.includes(filter);
+            item.style.display = isMatch ? '' : 'none';
+            
+            if (isMatch) {
+                let parent = item.closest('.tree-children');
+                while (parent) {
+                    parent.classList.add('show');
+                    const toggle = parent.parentElement.querySelector('.tree-toggle');
+                    if (toggle) {
+                        toggle.classList.add('expanded', 'bi-chevron-down');
+                        toggle.classList.remove('bi-chevron-left');
+                    }
+                    parent = parent.parentElement.closest('.tree-children');
+                }
+            }
+        });
+        
+        nodes.forEach(node => {
+            // Hide nodes that have no visible children and are not matches themselves
+            // This logic is a bit complex for simple JS, simplified approach:
+            // If a node has visible children, show it.
+            const content = node.querySelector('.tree-children');
+            if(!content) return;
+            const hasVisibleChildren = Array.from(content.querySelectorAll('.tree-content')).some(el => el.style.display !== 'none');
+            const header = node.querySelector('.tree-content');
+            const headerVisible = header.style.display !== 'none';
+            
+            node.style.display = (hasVisibleChildren || headerVisible) ? '' : 'none';
+        });
+    }
+    
+    function toggleAllBooks(checked) { // Legacy function, mapped to checkAll
+        checkAll(checked);
+    }
+    
+    function checkAll(check) {
+        document.querySelectorAll('#treeRoot input[type="checkbox"]').forEach(cb => cb.checked = check);
+        updateSelectionCount();
+    }
+    
+    function expandAll(expand) {
+        document.querySelectorAll('.tree-children').forEach(el => expand ? el.classList.add('show') : el.classList.remove('show'));
+        document.querySelectorAll('.tree-toggle').forEach(el => {
+            if(expand) { 
+                el.classList.add('expanded', 'bi-chevron-down'); 
+                el.classList.remove('bi-chevron-left'); 
+            } else { 
+                el.classList.remove('expanded', 'bi-chevron-down'); 
+                el.classList.add('bi-chevron-left'); 
+            }
+        });
+    }
+    
+    function updateSelectionCount() {
+        const count = document.querySelectorAll('.book-checkbox:checked').length;
+        const text = count > 0 ? count + ' ספרים נבחרו' : 'כל הספרים נבחרו';
+        document.getElementById('selectionCount').innerText = text;
+    }
+    
+    function applyTreeSelection() {
+        const container = document.getElementById('selectedBooksInputs');
+        container.innerHTML = '';
+        
+        const checkedBooks = document.querySelectorAll('.book-checkbox:checked');
+        checkedBooks.forEach(cb => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'book_id';
+            input.value = cb.value;
+            container.appendChild(input);
+        });
+        
+        document.getElementById('searchForm').submit();
+    }
+    
+    // Initialize count on modal open
+    document.getElementById('treeModal').addEventListener('show.bs.modal', updateSelectionCount);
+    // Also update on checkbox change
+    document.addEventListener('change', function(e) {
+        if(e.target.classList.contains('book-checkbox') || e.target.classList.contains('cat-checkbox')) {
+            updateSelectionCount();
+        }
+    });
+
+    function updateStatus() {
+        fetch('/status').then(r => r.json()).then(data => {
+            const textEl = document.getElementById('status-text'), dotEl = document.getElementById('status-dot'), countEl = document.getElementById('idx-count');
+            if(textEl) textEl.innerText = data.msg;
+            if(dotEl) { dotEl.className = data.state === 'ready' ? 'rounded-circle bg-success me-2' : (data.state === 'indexing' || data.state === 'downloading' ? 'rounded-circle bg-warning me-2 spinner-grow spinner-grow-sm' : (data.state === 'error' ? 'rounded-circle bg-danger me-2' : 'rounded-circle bg-secondary me-2')); }
+            if(data.count && countEl) countEl.innerText = data.count.toLocaleString();
+            setTimeout(updateStatus, (data.state === 'indexing' || data.state === 'downloading') ? 1000 : 5000);
+        }).catch(e => setTimeout(updateStatus, 5000));
+    }
+    document.addEventListener('DOMContentLoaded', updateStatus);
+
+    function showContext(bookId, startLine, endLine, query) {
+        const modal = new bootstrap.Modal(document.getElementById('contextModal'));
+        const body = document.getElementById('contextBody');
+        const title = document.getElementById('contextTitle');
+        
+        body.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
+        title.innerText = 'טעינת הקשר...';
+        modal.show();
+
+        fetch(`/api/get_context?book_id=${bookId}&line_idx=${startLine}&end_line=${endLine}&q=${encodeURIComponent(query)}`)
+            .then(r => r.json())
+            .then(data => {
+                if(data.error) {
+                    body.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                } else {
+                    title.innerText = data.title;
+                    body.innerHTML = data.html;
+                    
+                    // המתנה קצרה לרינדור התוכן ואז גלילה למרכז
+                    requestAnimationFrame(() => {
+                        setTimeout(() => {
+                            const targets = body.querySelectorAll('.highlight-target');
+                            if(targets.length > 0) targets[0].scrollIntoView({ behavior: 'auto', block: 'center' });
+                        }, 300);
+                    });
+
+    // --- Indexing Tree Filter JS (For Settings) ---
+    const indexBooksAtStart = {{ index_book_ids|default([])|tojson }};
+    let indexTreeLoaded = false;
+
+    function loadIndexTree() {
+        if (indexTreeLoaded) return;
+        const root = document.getElementById('indexTreeRoot');
+        
+        fetch('/api/get_tree?all=true')
+            .then(r => r.json())
+            .then(data => {
+                if (!data || data.length === 0) {
+                    root.innerHTML = '<div class="alert alert-warning m-1 py-1 px-2 small">לא ניתן לטעון את העץ. וודא שהוגדר מסד נתונים תקין.</div>';
+                    return;
+                }
+                root.innerHTML = renderIndexTreeJS(data);
+                indexTreeLoaded = true;
+                updateIndexSelectionCount();
+            })
+            .catch(err => { root.innerHTML = '<div class="text-danger small">שגיאה בטעינת העץ.</div>'; });
+    }
+
+    function renderIndexTreeJS(nodes) {
+        let html = '<ul class="tree-ul">';
+        nodes.forEach(node => {
+            const hasChildren = (node.children && node.children.length > 0) || (node.books && node.books.length > 0);
+            html += `<li class="tree-node idx-tree-node">
+                <div class="tree-content idx-tree-content">
+                    <i class="bi bi-chevron-left tree-toggle idx-tree-toggle ${hasChildren ? '' : 'invisible'}" onclick="toggleIndexNode(this)"></i>
+                    <div class="form-check mb-0 flex-grow-1 ms-1">
+                        <input class="form-check-input idx-cat-checkbox" type="checkbox" id="idx_cat_${node.id}" onchange="toggleIndexCategory(this)">
+                        <label class="form-check-label small fw-bold cursor-pointer w-100" for="idx_cat_${node.id}">
+                            <i class="bi bi-folder2-open text-warning me-1"></i> ${node.name}
+                        </label>
+                    </div>
+                </div>
+                <div class="tree-children idx-tree-children">
+                    ${node.children ? renderIndexTreeJS(node.children) : ''}
+                    ${node.books ? node.books.map(book => `
+                        <div class="tree-content idx-tree-content ms-4">
+                            <div class="form-check mb-0 flex-grow-1">
+                                <input class="form-check-input idx-book-checkbox" type="checkbox" name="index_book_id" value="${book.id}" id="idx_b_${book.id}" ${indexBooksAtStart.length === 0 || indexBooksAtStart.includes(book.id) ? 'checked' : ''}>
+                                <label class="form-check-label small text-truncate d-block cursor-pointer" for="idx_b_${book.id}" title="${book.title}">
+                                    <i class="bi bi-book text-secondary me-1"></i> ${book.title}
+                                </label>
+                            </div>
+                        </div>
+                    `).join('') : ''}
+                </div>
+            </li>`;
+        });
+        html += '</ul>';
+        return html;
+    }
+
+    function toggleIndexNode(el) {
+        el.classList.toggle('expanded');
+        el.classList.toggle('bi-chevron-left');
+        el.classList.toggle('bi-chevron-down');
+        const content = el.closest('.idx-tree-node').querySelector('.idx-tree-children');
+        if (content) content.classList.toggle('show');
+    }
+
+    function toggleIndexCategory(checkbox) {
+        const isChecked = checkbox.checked;
+        const node = checkbox.closest('.idx-tree-node');
+        const content = node.querySelector('.idx-tree-children');
+        if (content) {
+            const childCheckboxes = content.querySelectorAll('input[type="checkbox"]');
+            childCheckboxes.forEach(cb => { cb.checked = isChecked; });
+        }
+        updateIndexSelectionCount();
+    }
+
+    function checkIndexAll(check) {
+        document.querySelectorAll('#indexTreeRoot input[type="checkbox"]').forEach(cb => cb.checked = check);
+        updateIndexSelectionCount();
+    }
+
+    function expandIndexAll(expand) {
+        document.querySelectorAll('#indexTreeRoot .idx-tree-children').forEach(el => expand ? el.classList.add('show') : el.classList.remove('show'));
+        document.querySelectorAll('#indexTreeRoot .idx-tree-toggle').forEach(el => {
+            if(expand) { el.classList.add('expanded', 'bi-chevron-down'); el.classList.remove('bi-chevron-left'); }
+            else { el.classList.remove('expanded', 'bi-chevron-down'); el.classList.add('bi-chevron-left'); }
+        });
+    }
+
+    function updateIndexSelectionCount() {
+        const count = document.querySelectorAll('.idx-book-checkbox:checked').length;
+        const total = document.querySelectorAll('.idx-book-checkbox').length;
+        const text = (count === total || count === 0 && total === 0) ? 'כל הספרים נבחרו לאינדוקס' : count + ' ספרים יאונדקסו';
+        document.getElementById('indexSelectionCount').innerText = text;
+    }
+
+    function filterIndexTree() {
+        const input = document.getElementById('indexTreeSearch');
+        const filter = input.value.toLowerCase();
+        const items = document.querySelectorAll('#indexTreeRoot .idx-tree-content');
+        const nodes = document.querySelectorAll('#indexTreeRoot .idx-tree-node');
+        
+        if (!filter) {
+            document.querySelectorAll('#indexTreeRoot .idx-tree-children').forEach(nc => nc.classList.remove('show'));
+            document.querySelectorAll('#indexTreeRoot .idx-tree-toggle').forEach(ti => {
+                ti.classList.remove('expanded', 'bi-chevron-down');
+                ti.classList.add('bi-chevron-left');
+            });
+            items.forEach(i => i.style.display = '');
+            nodes.forEach(n => n.style.display = '');
+            return;
+        }
+
+        items.forEach(item => {
+            const text = item.innerText.toLowerCase();
+            const isMatch = text.includes(filter);
+            item.style.display = isMatch ? '' : 'none';
+            
+            if (isMatch) {
+                let parent = item.closest('.idx-tree-children');
+                while (parent) {
+                    parent.classList.add('show');
+                    const toggle = parent.parentElement.querySelector('.idx-tree-toggle');
+                    if (toggle) {
+                        toggle.classList.add('expanded', 'bi-chevron-down');
+                        toggle.classList.remove('bi-chevron-left');
+                    }
+                    parent = parent.parentElement.closest('.idx-tree-children');
+                }
+            }
+        });
+        
+        nodes.forEach(node => {
+            const content = node.querySelector('.idx-tree-children');
+            if(!content) return;
+            const hasVisibleChildren = Array.from(content.querySelectorAll('.idx-tree-content')).some(el => el.style.display !== 'none');
+            const header = node.querySelector('.idx-tree-content');
+            const headerVisible = header.style.display !== 'none';
+            node.style.display = (hasVisibleChildren || headerVisible) ? '' : 'none';
+        });
+    }
+
+    document.addEventListener('change', function(e) {
+        if(e.target.classList.contains('idx-book-checkbox') || e.target.classList.contains('idx-cat-checkbox')) {
+            updateIndexSelectionCount();
+        }
+    });
+</script>
+
+</body>
+</html>
