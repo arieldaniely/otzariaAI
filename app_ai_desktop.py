@@ -2,8 +2,11 @@ import socket
 import threading
 import time
 
-import webview
 from werkzeug.serving import make_server
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication
+from PySide6.QtWebEngineWidgets import QWebEngineView
 
 import app_ai
 
@@ -11,6 +14,7 @@ import app_ai
 HOST = "127.0.0.1"
 WINDOW_TITLE = "אוצריא AI"
 WINDOW_SIZE = (1400, 950)
+ICON_PATH = app_ai.os.path.join(app_ai.STATIC_DIR, "icon.ico")
 
 
 def pick_free_port(host: str = HOST) -> int:
@@ -73,16 +77,23 @@ def main() -> None:
     server.start()
     wait_until_ready(HOST, port)
 
-    window = webview.create_window(
-        WINDOW_TITLE,
-        f"http://{HOST}:{port}",
-        width=WINDOW_SIZE[0],
-        height=WINDOW_SIZE[1],
-        min_size=(1100, 760),
-    )
+    qt_app = QApplication.instance() or QApplication([])
+    qt_app.setApplicationName(WINDOW_TITLE)
+
+    if app_ai.os.path.exists(ICON_PATH):
+        qt_app.setWindowIcon(QIcon(ICON_PATH))
+
+    window = QWebEngineView()
+    window.setWindowTitle(WINDOW_TITLE)
+    window.resize(*WINDOW_SIZE)
+    window.setMinimumSize(1100, 760)
+    if app_ai.os.path.exists(ICON_PATH):
+        window.setWindowIcon(QIcon(ICON_PATH))
+    window.load(QUrl(f"http://{HOST}:{port}"))
+    window.show()
 
     try:
-        webview.start()
+        qt_app.exec()
     finally:
         server.shutdown()
 
