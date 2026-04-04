@@ -3,4 +3,4 @@ requests
 numpy
 faiss-cpu
 huggingface_hub
-PySide6
+pywebview
