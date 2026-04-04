@@ -120,6 +120,20 @@
             align-items: center; 
         }
         #loading-indicator.active { display: flex; }
+        .live-log-panel { background: #0f172a; color: #e2e8f0; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.2); max-height: 60vh; overflow-y: auto; padding: 1rem; }
+        .live-log-line { display: grid; grid-template-columns: 70px 90px 1fr; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(148, 163, 184, 0.15); align-items: start; }
+        .live-log-line:last-child { border-bottom: none; }
+        .live-log-time { color: #93c5fd; font-family: monospace; font-size: 0.9rem; }
+        .live-log-state { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; }
+        .live-log-msg { white-space: pre-wrap; word-break: break-word; }
+        .live-log-line.state-error .live-log-state { color: #fca5a5; }
+        .live-log-line.state-ready .live-log-state { color: #86efac; }
+        .live-log-line.state-indexing .live-log-state,
+        .live-log-line.state-downloading .live-log-state,
+        .live-log-line.state-loading .live-log-state { color: #fcd34d; }
+        .live-log-line.state-info .live-log-state,
+        .live-log-line.state-idle .live-log-state { color: #cbd5e1; }
+        [data-bs-theme="dark"] .live-log-panel { background: #020617; border-color: rgba(148, 163, 184, 0.15); }
         
         /* עיצוב דרופדאון ספרים */
         .books-dropdown-menu { width: 300px; max-height: 400px; overflow: hidden; flex-direction: column; background-color: var(--card-bg); border: 1px solid var(--border-color); }
@@ -180,6 +194,7 @@
                 <span id="idx-count" class="ms-2 fw-bold">{{ idx_count }}</span>
             </div>
             {% if model_loaded %}
+            <button class="btn btn-link text-secondary p-0 fs-5 settings-btn" data-bs-toggle="modal" data-bs-target="#liveLogModal" title="לוג חי"><i class="bi bi-terminal"></i></button>
             <button class="btn btn-link text-secondary p-0 fs-5 settings-btn" id="themeToggle" title="החלף מצב תצוגה"><i class="bi bi-moon-stars"></i></button>
             <button class="btn btn-link text-secondary p-0 fs-5 settings-btn" data-bs-toggle="modal" data-bs-target="#settingsModal" title="הגדרות"><i class="bi bi-gear"></i></button>
             {% endif %}
@@ -247,7 +262,7 @@
         {% endif %}
 
         {% for r in results %}
-        <div class="result-card" style="cursor: pointer;" onclick="showContext({{ r.book_id }}, {{ r.line_index }}, {{ r.end_line }}, '{{ query }}')">
+        <div class="result-card" style="cursor: pointer;" onclick='showContext({{ r.book_id }}, {{ r.line_index }}, {{ r.end_line }}, {{ query|tojson }})'>
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <span class="source-badge"><i class="bi bi-journal-text me-1"></i> {{ r.source }}</span>
                 
@@ -273,6 +288,8 @@
         <div class="modal-content border-0 shadow-lg">
             <form action="/setup" method="post">
                 <input type="hidden" name="settings_submitted" value="1">
+                <input type="hidden" name="index_selection_present" id="indexSelectionPresent" value="0">
+                <input type="hidden" name="index_total_books" id="indexTotalBooks" value="0">
                 <div class="modal-header border-bottom px-4">
                     <h5 class="modal-title fw-bold d-flex align-items-center"><i class="bi bi-gear-fill me-2 text-primary"></i> הגדרות מערכת</h5>
                     <button type="button" class="btn-close ms-0 me-auto" data-bs-dismiss="modal"></button>
@@ -467,6 +484,33 @@
             </div>
         </div>
     </div>
+</div>
+
+<div class="modal fade" id="liveLogModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header border-bottom">
+                <div>
+                    <h5 class="modal-title fw-bold mb-1"><i class="bi bi-terminal me-2 text-primary"></i>לוג חי</h5>
+                    <div class="text-muted small" id="liveLogStatus">טוען לוג...</div>
+                </div>
+                <div class="d-flex align-items-center gap-2 ms-auto">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="refreshLiveLog"><i class="bi bi-arrow-clockwise me-1"></i>רענון</button>
+                    <button type="button" class="btn-close ms-0 me-auto" data-bs-dismiss="modal"></button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="live-log-panel" id="liveLogBody">
+                    <div class="text-center py-5 text-muted">אין עדיין אירועים להצגה.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="loading-indicator">
+    <div class="spinner-border text-primary mb-3" role="status"></div>
+    <div class="fw-semibold">טוען...</div>
 </div>
 
 <script src="/static/bootstrap.bundle.min.js"></script>
@@ -850,13 +894,82 @@
     function updateStatus() {
         fetch('/status').then(r => r.json()).then(data => {
             const textEl = document.getElementById('status-text'), dotEl = document.getElementById('status-dot'), countEl = document.getElementById('idx-count');
-            if(textEl) textEl.innerText = data.msg;
-            if(dotEl) { dotEl.className = data.state === 'ready' ? 'rounded-circle bg-success me-2' : (data.state === 'indexing' || data.state === 'downloading' ? 'rounded-circle bg-warning me-2 spinner-grow spinner-grow-sm' : (data.state === 'error' ? 'rounded-circle bg-danger me-2' : 'rounded-circle bg-secondary me-2')); }
-            if(data.count && countEl) countEl.innerText = data.count.toLocaleString();
-            setTimeout(updateStatus, (data.state === 'indexing' || data.state === 'downloading') ? 1000 : 5000);
+            if(textEl) {
+                const showProgress = data.state === 'indexing' || data.state === 'downloading' || data.state === 'loading';
+                textEl.innerText = showProgress ? `${data.msg} (${data.progress}%)` : data.msg;
+            }
+            if(dotEl) { dotEl.className = data.state === 'ready' ? 'rounded-circle bg-success me-2' : (data.state === 'indexing' || data.state === 'downloading' || data.state === 'loading' ? 'rounded-circle bg-warning me-2 spinner-grow spinner-grow-sm' : (data.state === 'error' ? 'rounded-circle bg-danger me-2' : 'rounded-circle bg-secondary me-2')); }
+            if(typeof data.count !== 'undefined' && countEl) countEl.innerText = data.count.toLocaleString();
+            setTimeout(updateStatus, (data.state === 'indexing' || data.state === 'downloading' || data.state === 'loading') ? 1000 : 5000);
         }).catch(e => setTimeout(updateStatus, 5000));
     }
     document.addEventListener('DOMContentLoaded', updateStatus);
+
+    let liveLogTimer = null;
+
+    function escapeHtml(text) {
+        return String(text ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function renderLiveLog(data) {
+        const body = document.getElementById('liveLogBody');
+        const status = document.getElementById('liveLogStatus');
+        if (!body || !status) return;
+
+        const entries = Array.isArray(data.entries) ? data.entries : [];
+        const currentStatus = data.status || {};
+        const countSuffix = typeof data.count !== 'undefined' ? `, ${Number(data.count).toLocaleString()} רשומות` : '';
+        status.innerText = `${currentStatus.msg || 'מוכן'}${typeof currentStatus.progress === 'number' ? ` (${currentStatus.progress}%)` : ''}${countSuffix}`;
+
+        const shouldStick = (body.scrollHeight - body.scrollTop - body.clientHeight) < 48;
+        if (!entries.length) {
+            body.innerHTML = '<div class="text-center py-5 text-muted">אין עדיין אירועים להצגה.</div>';
+            return;
+        }
+
+        body.innerHTML = entries.map(entry => `
+            <div class="live-log-line state-${escapeHtml(entry.state || 'info')}">
+                <div class="live-log-time">${escapeHtml(entry.ts || '')}</div>
+                <div class="live-log-state">${escapeHtml(entry.state || 'info')}</div>
+                <div class="live-log-msg">${escapeHtml(entry.msg || '')}</div>
+            </div>
+        `).join('');
+
+        if (shouldStick) body.scrollTop = body.scrollHeight;
+    }
+
+    function fetchLiveLog() {
+        fetch('/api/logs?limit=250')
+            .then(r => r.json())
+            .then(renderLiveLog)
+            .catch(() => {
+                const status = document.getElementById('liveLogStatus');
+                if (status) status.innerText = 'שגיאה בטעינת הלוג.';
+            });
+    }
+
+    const liveLogModalEl = document.getElementById('liveLogModal');
+    if (liveLogModalEl) {
+        liveLogModalEl.addEventListener('show.bs.modal', function() {
+            fetchLiveLog();
+            if (liveLogTimer) clearInterval(liveLogTimer);
+            liveLogTimer = setInterval(fetchLiveLog, 1000);
+        });
+        liveLogModalEl.addEventListener('hidden.bs.modal', function() {
+            if (liveLogTimer) {
+                clearInterval(liveLogTimer);
+                liveLogTimer = null;
+            }
+        });
+    }
+
+    const refreshLiveLogBtn = document.getElementById('refreshLiveLog');
+    if (refreshLiveLogBtn) refreshLiveLogBtn.addEventListener('click', fetchLiveLog);
 
     function showContext(bookId, startLine, endLine, query) {
         const modal = new bootstrap.Modal(document.getElementById('contextModal'));
@@ -883,6 +996,12 @@
                             if(targets.length > 0) targets[0].scrollIntoView({ behavior: 'auto', block: 'center' });
                         }, 300);
                     });
+                }
+            })
+            .catch(() => {
+                body.innerHTML = '<div class="alert alert-danger">אירעה שגיאה בטעינת ההקשר.</div>';
+            });
+    }
 
     // --- Indexing Tree Filter JS (For Settings) ---
     const indexBooksAtStart = {{ index_book_ids|default([])|tojson }};
@@ -901,6 +1020,11 @@
                 }
                 root.innerHTML = renderIndexTreeJS(data);
                 indexTreeLoaded = true;
+                const totalBooks = root.querySelectorAll('.idx-book-checkbox').length;
+                const selectionPresent = document.getElementById('indexSelectionPresent');
+                const totalBooksInput = document.getElementById('indexTotalBooks');
+                if (selectionPresent) selectionPresent.value = '1';
+                if (totalBooksInput) totalBooksInput.value = String(totalBooks);
                 updateIndexSelectionCount();
             })
             .catch(err => { root.innerHTML = '<div class="text-danger small">שגיאה בטעינת העץ.</div>'; });

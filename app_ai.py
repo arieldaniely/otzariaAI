@@ -215,8 +215,39 @@ def iter_rows_ordered(db_path: str, chunk_rows: int = 20000):
         yield rows
     con.close()
 
-def iter_chunks(db_path: str, max_chunks: int, ideal_words: int = IDEAL_CHUNK_WORDS, max_words: int = MAX_CHUNK_WORDS, overlap_words: int = DEFAULT_OVERLAP_WORDS):
-    rows_iter = iter_rows_ordered(db_path)
+def iter_rows_ordered_filtered(db_path: str, book_ids: Optional[List[int]] = None, chunk_rows: int = 20000):
+    if not book_ids:
+        yield from iter_rows_ordered(db_path, chunk_rows=chunk_rows)
+        return
+
+    if not os.path.exists(db_path): raise FileNotFoundError(f"קובץ מסד הנתונים לא נמצא: {db_path}")
+    con = sqlite3.connect(db_path)
+    con.row_factory = sqlite3.Row
+    con.execute("PRAGMA journal_mode=OFF;")
+    table_name = "line"
+    try:
+        con.execute("SELECT 1 FROM lines LIMIT 1")
+        table_name = "lines"
+    except: pass
+    try: con.execute(f"SELECT 1 FROM {table_name} LIMIT 1")
+    except:
+        con.close(); return
+
+    placeholders = ",".join(["?"] * len(book_ids))
+    q = (
+        f"SELECT id, bookId, lineIndex, content FROM {table_name} "
+        f"WHERE content IS NOT NULL AND content != '' AND bookId IN ({placeholders}) "
+        "ORDER BY bookId, lineIndex"
+    )
+    cur = con.execute(q, list(book_ids))
+    while True:
+        rows = cur.fetchmany(chunk_rows)
+        if not rows: break
+        yield rows
+    con.close()
+
+def iter_chunks(db_path: str, max_chunks: int, ideal_words: int = IDEAL_CHUNK_WORDS, max_words: int = MAX_CHUNK_WORDS, overlap_words: int = DEFAULT_OVERLAP_WORDS, book_ids: Optional[List[int]] = None):
+    rows_iter = iter_rows_ordered_filtered(db_path, book_ids=book_ids)
     buf = []
     cur_book = None
     produced = 0
@@ -324,12 +355,35 @@ class Engine:
         self.library_tree: List[Dict] = []
         self.status = {"state": "idle", "msg": "המערכת מוכנה", "progress": 0}
         self._lock = threading.RLock()
+        self._log_seq = 0
+        self.log_entries: deque = deque(maxlen=500)
         self.last_cfg = load_settings()
+        self._append_log("idle", self.status["msg"], self.status["progress"])
+
+    def _append_log(self, state: str, msg: str, progress: Optional[int] = None):
+        self._log_seq += 1
+        self.log_entries.append({
+            "id": self._log_seq,
+            "ts": time.strftime("%H:%M:%S"),
+            "state": state,
+            "msg": msg,
+            "progress": int(progress if progress is not None else self.status.get("progress", 0)),
+        })
 
     def _update(self, state, msg, progress):
         with self._lock:
             self.status = {"state": state, "msg": msg, "progress": int(progress)}
+            self._append_log(state, msg, progress)
         print(f"[{state}] {msg} ({progress}%)")
+
+    def log(self, msg: str, state: str = "info", progress: Optional[int] = None):
+        with self._lock:
+            self._append_log(state, msg, progress)
+        print(f"[{state}] {msg}")
+
+    def get_logs(self, limit: int = 200) -> List[Dict]:
+        with self._lock:
+            return list(self.log_entries)[-max(1, int(limit)):]
 
     def update_book_map(self, book_map: Dict[int, str]):
         self.book_map = book_map
@@ -389,12 +443,19 @@ class Engine:
             self._update("error", f"שגיאה בטעינת מודל: {e}", 0)
             raise
 
-    def _stamp(self, edition: str, max_chunks: int, ideal: int, max_w: int, overlap: int) -> str:
-        return f"{edition}_N{max_chunks}_Ideal{ideal}_Max{max_w}_Overlap{overlap}"
+    def _stamp(self, edition: str, max_chunks: int, ideal: int, max_w: int, overlap: int, book_ids: Optional[List[int]] = None) -> str:
+        if book_ids:
+            normalized = ",".join(str(bid) for bid in sorted(set(book_ids)))
+            scope_hash = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:10]
+            scope = f"B{len(set(book_ids))}_{scope_hash}"
+        else:
+            scope = "ALL"
+        return f"{edition}_{scope}_N{max_chunks}_Ideal{ideal}_Max{max_w}_Overlap{overlap}"
     
-    def build_index(self, db_path: str, max_chunks: int, ideal: int = IDEAL_CHUNK_WORDS, max_w: int = MAX_CHUNK_WORDS, overlap: int = DEFAULT_OVERLAP_WORDS):
+    def build_index(self, db_path: str, max_chunks: int, ideal: int = IDEAL_CHUNK_WORDS, max_w: int = MAX_CHUNK_WORDS, overlap: int = DEFAULT_OVERLAP_WORDS, book_ids: Optional[List[int]] = None):
         if not self.model or self.status["state"] == "indexing": return
-        stamp = self._stamp(self.model.edition, max_chunks, ideal, max_w, overlap)
+        normalized_book_ids = sorted({int(bid) for bid in (book_ids or []) if str(bid).isdigit()})
+        stamp = self._stamp(self.model.edition, max_chunks, ideal, max_w, overlap, normalized_book_ids)
         idx_path = os.path.join(RUNTIME_DIR, f"{stamp}.index")
         meta_db_path = os.path.join(RUNTIME_DIR, f"{stamp}.sqlite")
 
@@ -406,10 +467,14 @@ class Engine:
             idx = faiss.deserialize_index(idx_data)
             self.built = BuiltIndex(idx, meta_db_path, idx.ntotal)
             if not self.book_map: self.update_book_map(get_book_titles(db_path))
-            self._update("ready", f"מוכן לחיפוש ({idx.ntotal:,} רשומות)", 100)
+            scope_msg = f", {len(normalized_book_ids):,} ספרים" if normalized_book_ids else ""
+            self._update("ready", f"מוכן לחיפוש ({idx.ntotal:,} רשומות{scope_msg})", 100)
             return
 
-        self._update("indexing", "מתחיל בבניית אינדקס (זה יקח זמן)...", 0)
+        if normalized_book_ids:
+            self._update("indexing", f"מתחיל בבניית אינדקס עבור {len(normalized_book_ids):,} ספרים...", 0)
+        else:
+            self._update("indexing", "מתחיל בבניית אינדקס (זה יקח זמן)...", 0)
         
         # שימוש בקובץ זמני ייחודי כדי למנוע התנגשויות בין תהליכים/ת'רדים
         temp_db_path = meta_db_path + f".{uuid.uuid4().hex}.tmp"
@@ -449,7 +514,7 @@ class Engine:
         total_processed = 0
         start_time = time.time()
 
-        for chunk in iter_chunks(db_path, max_chunks, ideal, max_w, overlap):
+        for chunk in iter_chunks(db_path, max_chunks, ideal, max_w, overlap, book_ids=normalized_book_ids or None):
             vec = self._text_to_vec(chunk["clean"])
             if vec is None: continue
             current_id = total_processed
@@ -504,7 +569,8 @@ class Engine:
             final_db_path = temp_db_path
             
         self.built = BuiltIndex(index, final_db_path, total_processed)
-        self._update("ready", "הבנייה הושלמה בהצלחה!", 100)
+        scope_msg = f" עבור {len(normalized_book_ids):,} ספרים" if normalized_book_ids else ""
+        self._update("ready", f"הבנייה הושלמה בהצלחה{scope_msg}!", 100)
 
     def _text_to_vec(self, text: str):
         if not self.model: return None
@@ -987,6 +1053,7 @@ def index():
     all_books = {bid: title for bid, title in ENGINE.book_map.items() if not indexed_ids or bid in indexed_ids}
     
     sorted_books = dict(sorted(all_books.items(), key=lambda item: item[1])[:800])
+    index_book_ids = [int(b) for b in cfg.get("index_book_ids", []) if str(b).isdigit()]
 
     if q:
         if not ENGINE.built and ENGINE.status["state"] not in ("indexing", "downloading"):
@@ -998,7 +1065,8 @@ def index():
                         int(cfg.get("max_chunks", 100000)),
                         int(cfg.get("ideal_chunk_words", IDEAL_CHUNK_WORDS)),
                         int(cfg.get("max_chunk_words", MAX_CHUNK_WORDS)),
-                        int(cfg.get("overlap_words", DEFAULT_OVERLAP_WORDS))
+                        int(cfg.get("overlap_words", DEFAULT_OVERLAP_WORDS)),
+                        index_book_ids,
                     )
                 except Exception as e: ENGINE._update("error", f"שגיאה: {e}", 0)
             threading.Thread(target=task, daemon=True).start()
@@ -1030,7 +1098,7 @@ def index():
         w_vec=cfg.get("w_vec", 0.35), w_bm=cfg.get("w_bm", 0.25), w_overlap=cfg.get("w_overlap", 0.25), 
         w_phrase=cfg.get("w_phrase", 0.10), w_proximity=cfg.get("w_proximity", 0.05),
         decay_2=cfg.get("decay_2", 0.75), decay_3=cfg.get("decay_3", 0.35), decay_4=cfg.get("decay_4", 0.05),
-        expanded_query=expanded_query
+        expanded_query=expanded_query, index_book_ids=index_book_ids
     )
 @app.route("/api/autocomplete")
 def autocomplete():
@@ -1074,7 +1142,8 @@ def get_tree_api():
     """API endpoint to fetch the library tree asynchronously."""
     cfg = ENGINE.last_cfg or {}
     db_path = cfg.get("db_path", DEFAULT_DB_PATH)
-    indexed_ids = ENGINE.get_indexed_book_ids()
+    show_all = request.args.get("all", "").lower() in ("1", "true", "yes")
+    indexed_ids = None if show_all else ENGINE.get_indexed_book_ids()
     tree = get_library_tree(db_path, indexed_ids if indexed_ids else None)
     return jsonify(tree)
 
@@ -1168,6 +1237,7 @@ def setup():
     old_ideal = int(cfg.get("ideal_chunk_words", IDEAL_CHUNK_WORDS))
     old_max_w = int(cfg.get("max_chunk_words", MAX_CHUNK_WORDS))
     old_overlap = int(cfg.get("overlap_words", DEFAULT_OVERLAP_WORDS))
+    old_index_book_ids = sorted({int(b) for b in cfg.get("index_book_ids", []) if str(b).isdigit()})
 
     # קריאת הערכים החדשים
     new_db = request.form.get("db_path", DEFAULT_DB_PATH).strip()
@@ -1178,6 +1248,16 @@ def setup():
     new_ideal = int(request.form.get("ideal_chunk_words", IDEAL_CHUNK_WORDS))
     new_max_w = int(request.form.get("max_chunk_words", MAX_CHUNK_WORDS))
     new_overlap = int(request.form.get("overlap_words", DEFAULT_OVERLAP_WORDS))
+    selection_present = request.form.get("index_selection_present", "0") == "1"
+    total_index_books = request.form.get("index_total_books", type=int) or 0
+    if selection_present:
+        submitted_index_ids = sorted({int(b) for b in request.form.getlist("index_book_id") if str(b).isdigit()})
+        if total_index_books and (len(submitted_index_ids) == 0 or len(submitted_index_ids) == total_index_books):
+            new_index_book_ids = []
+        else:
+            new_index_book_ids = submitted_index_ids
+    else:
+        new_index_book_ids = old_index_book_ids
 
     cfg.update({
         "db_path": new_db,
@@ -1185,6 +1265,7 @@ def setup():
         "max_chunks": new_max_chunks,
         "model_source": new_source,
         "zip_path": new_zip,
+        "index_book_ids": new_index_book_ids,
         "ideal_chunk_words": new_ideal,
         "max_chunk_words": new_max_w,
         "overlap_words": new_overlap,
@@ -1201,11 +1282,16 @@ def setup():
     })
     save_settings(cfg)
     ENGINE.last_cfg = cfg
+    if new_index_book_ids:
+        ENGINE.log(f"נשמרו הגדרות. אינדוקס יוגבל ל-{len(new_index_book_ids):,} ספרים.", "info")
+    else:
+        ENGINE.log("נשמרו הגדרות. אינדוקס יכלול את כל הספרים.", "info")
 
     # בדיקה אם נדרש טעינה מחדש (אם השתנו פרמטרים מבניים)
     if (new_db != old_db or new_edition != old_edition or 
         new_max_chunks != old_max_chunks or new_source != old_source or new_zip != old_zip or
-        new_ideal != old_ideal or new_max_w != old_max_w or new_overlap != old_overlap):
+        new_ideal != old_ideal or new_max_w != old_max_w or new_overlap != old_overlap or
+        new_index_book_ids != old_index_book_ids):
         
         def reload_task():
             try:
@@ -1219,7 +1305,7 @@ def setup():
                     ENGINE.library_tree = get_library_tree(new_db)
                 
                 # בניית אינדקס (או טעינה אם קיים)
-                ENGINE.build_index(new_db, new_max_chunks, new_ideal, new_max_w, new_overlap)
+                ENGINE.build_index(new_db, new_max_chunks, new_ideal, new_max_w, new_overlap, new_index_book_ids)
             except Exception as e:
                 ENGINE._update("error", f"שגיאה בטעינה מחדש: {e}", 0)
         
@@ -1237,6 +1323,15 @@ def status_api():
     if ENGINE.built: s["count"] = ENGINE.built.count
     return jsonify(s)
 
+@app.route("/api/logs")
+def logs_api():
+    limit = request.args.get("limit", default=200, type=int) or 200
+    return jsonify({
+        "entries": ENGINE.get_logs(limit=min(limit, 500)),
+        "status": ENGINE.status.copy(),
+        "count": ENGINE.built.count if ENGINE.built else 0,
+    })
+
 # Helper UI Routes
 @app.route("/upload_model", methods=["POST"])
 def upload_model():
@@ -1247,12 +1342,15 @@ def upload_model():
         cfg = load_settings()
         cfg.update({"model_source": "zip", "zip_path": target})
         save_settings(cfg)
+        ENGINE.last_cfg = cfg
+        ENGINE.log(f"מודל ZIP חדש הועלה: {os.path.basename(target)}", "info")
         threading.Thread(target=lambda: (
             ENGINE.load_resources(cfg.get("db_path", DEFAULT_DB_PATH), cfg.get("edition", "v3"), "zip", target), 
             ENGINE.build_index(cfg.get("db_path", DEFAULT_DB_PATH), int(cfg.get("max_chunks", 100000)),
                                int(cfg.get("ideal_chunk_words", IDEAL_CHUNK_WORDS)),
                                int(cfg.get("max_chunk_words", MAX_CHUNK_WORDS)),
-                               int(cfg.get("overlap_words", DEFAULT_OVERLAP_WORDS)))
+                               int(cfg.get("overlap_words", DEFAULT_OVERLAP_WORDS)),
+                               [int(b) for b in cfg.get("index_book_ids", []) if str(b).isdigit()])
         )).start()
     return redirect("/")
 
@@ -1277,6 +1375,7 @@ def download_db():
                 cfg = load_settings()
                 cfg["db_path"] = db_file
                 save_settings(cfg); ENGINE.last_cfg = cfg
+                ENGINE.log(f"מסד הנתונים עודכן ל-{db_file}", "info")
                 ENGINE._update("ready", "הסתיים בהצלחה", 100)
         except Exception as e: ENGINE._update("error", str(e), 0)
     threading.Thread(target=task, daemon=True).start()
@@ -1296,14 +1395,15 @@ def upload_db():
                     with zipfile.ZipFile(target, 'r') as z: z.extractall(DB_DIR)
                     db_file = next((os.path.join(r, f) for r, d, files in os.walk(DB_DIR) for f in files if f.endswith((".db", ".sqlite"))), None)
                 if db_file:
-                    cfg = load_settings(); cfg["db_path"] = db_file; save_settings(cfg)
+                    cfg = load_settings(); cfg["db_path"] = db_file; save_settings(cfg); ENGINE.last_cfg = cfg
                     ENGINE.update_book_map(get_book_titles(db_file))
                     if cfg.get("model_source"):
                         ENGINE.load_resources(db_file, cfg.get("edition", "v3"), cfg["model_source"], cfg.get("zip_path", ""))
                         ENGINE.build_index(db_file, int(cfg.get("max_chunks", 100000)),
                                            int(cfg.get("ideal_chunk_words", IDEAL_CHUNK_WORDS)),
                                            int(cfg.get("max_chunk_words", MAX_CHUNK_WORDS)),
-                                           int(cfg.get("overlap_words", DEFAULT_OVERLAP_WORDS)))
+                                           int(cfg.get("overlap_words", DEFAULT_OVERLAP_WORDS)),
+                                           [int(b) for b in cfg.get("index_book_ids", []) if str(b).isdigit()])
             except Exception as e: ENGINE._update("error", str(e), 0)
         threading.Thread(target=task).start()
     return redirect("/")
@@ -1352,7 +1452,8 @@ if __name__ == "__main__":
             ENGINE.build_index(cfg.get("db_path", DEFAULT_DB_PATH), int(cfg.get("max_chunks", 100000)),
                                int(cfg.get("ideal_chunk_words", IDEAL_CHUNK_WORDS)),
                                int(cfg.get("max_chunk_words", MAX_CHUNK_WORDS)),
-                               int(cfg.get("overlap_words", DEFAULT_OVERLAP_WORDS)))
+                               int(cfg.get("overlap_words", DEFAULT_OVERLAP_WORDS)),
+                               [int(b) for b in cfg.get("index_book_ids", []) if str(b).isdigit()])
         except Exception as e: ENGINE._update("error", f"שגיאה בהפעלה: {e}", 0)
 
     is_frozen = getattr(sys, 'frozen', False)
