@@ -56,10 +56,8 @@ RUNTIME_DIR = os.path.join(EXE_DIR, "runtime")
 DB_DIR = os.path.join(EXE_DIR, "db")
 
 # בדיקה אם המודלים ארוזים בתוך ה-EXE או נמצאים בחוץ
-if os.path.exists(os.path.join(BUNDLE_DIR, "models_zips")):
-    MODELS_ZIPS_DIR = os.path.join(BUNDLE_DIR, "models_zips")
-else:
-    MODELS_ZIPS_DIR = os.path.join(EXE_DIR, "models_zips")
+# הגדרה קבועה לתיקייה מחוץ ל-EXE כדי שהעלאות דרך הממשק יישמרו לתמיד
+MODELS_ZIPS_DIR = os.path.join(EXE_DIR, "models_zips")
 
 if os.path.exists(os.path.join(BUNDLE_DIR, "static")):
     STATIC_DIR = os.path.join(BUNDLE_DIR, "static")
@@ -408,7 +406,11 @@ class Engine:
         try:
             self._update("downloading", f"טוען מודל {edition} ({model_source})...", 5)
             if model_source == "zip":
-                if not zip_path: zip_path = os.path.join(MODELS_ZIPS_DIR, f"otzaria_embeddings_{edition}.zip")
+                if not zip_path:
+                    zip_path = os.path.join(MODELS_ZIPS_DIR, f"otzaria_embeddings_{edition}.zip")
+                    # אם אין מודל חיצוני ליד התוכנה, נשתמש במודל הפנימי שארוז בתוך ה-EXE
+                    if getattr(sys, 'frozen', False) and not os.path.exists(zip_path):
+                        zip_path = os.path.join(BUNDLE_DIR, "models_zips", f"otzaria_embeddings_{edition}.zip")
                 extracted_root = ensure_zip_extracted(zip_path)
                 vocab_path, emb_path = find_model_files(extracted_root, edition)
             else:
