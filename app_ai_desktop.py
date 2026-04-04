@@ -1,4 +1,11 @@
 import os
+import sys
+
+# פתרון קריטי לאריזה ב-Windows: הפניית מנוע התצוגה לקובץ הפייתון המובנה בתוכנה שלנו במקום לחפש במחשב של המשתמש
+if getattr(sys, 'frozen', False) and sys.platform == 'win32':
+    dll_name = f"python{sys.version_info.major}{sys.version_info.minor}.dll"
+    os.environ["PYTHONNET_PYDLL"] = os.path.join(sys._MEIPASS, dll_name)
+
 import socket
 import threading
 import time

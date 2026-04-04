@@ -135,10 +135,10 @@ jobs:
             --noconfirm \
             --clean \
             --windowed \
-            --onedir \
+            --onefile \
             --name "${{ env.EXECUTABLE_NAME }}" \
-            --hidden-import "PySide6.QtWebEngineCore" \
-            --hidden-import "PySide6.QtWebEngineWidgets" \
+            --hidden-import "webview" \
+            --hidden-import "pythonnet" \
             --add-data "static${DATA_SEP}static" \
             --add-data "models_zips${DATA_SEP}models_zips" \
             --add-data "app_ai.html${DATA_SEP}." \
@@ -155,7 +155,7 @@ jobs:
           if ("${{ matrix.build_target }}" -eq "macos") {
             Compress-Archive -Path "dist/${{ env.EXECUTABLE_NAME }}.app" -DestinationPath $archive -Force
           } else {
-            Compress-Archive -Path "dist/${{ env.EXECUTABLE_NAME }}/*" -DestinationPath $archive -Force
+            Compress-Archive -Path "dist/${{ env.EXECUTABLE_NAME }}.exe" -DestinationPath $archive -Force
           }
           "ARCHIVE_NAME=$archive" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
