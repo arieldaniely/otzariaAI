@@ -3,6 +3,7 @@
 /db
 /local_models
 /hf_cache
+/otzariaAI-website
 
 # Python cache
 __pycache__/
