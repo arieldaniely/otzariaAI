@@ -998,12 +998,15 @@
             const setupContainer = document.getElementById('setup-container');
             const bootContainer = document.getElementById('boot-loading-container');
             if (setupContainer && bootContainer) {
-                if (data.state === 'ready') {
-                    window.location.reload();
-                } else if (data.state === 'indexing' || data.state === 'downloading' || data.state === 'loading' || data.state === 'idle') {
+                const isWorking = ['indexing', 'downloading', 'loading'].includes(data.state);
+                
+                if (isWorking) {
                     setupContainer.style.display = 'none';
                     bootContainer.style.display = 'block';
                     document.getElementById('boot-loading-desc').innerText = data.msg + (data.progress > 0 ? ` (${data.progress}%)` : '');
+                    window._wasWorking = true;
+                } else if (data.state === 'ready' && window._wasWorking) {
+                    window.location.reload();
                 } else {
                     setupContainer.style.display = 'block';
                     bootContainer.style.display = 'none';
