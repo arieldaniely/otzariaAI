@@ -29,7 +29,22 @@ from huggingface_hub import snapshot_download
 # CONFIG
 # =========================
 HF_REPO = "ArieLLL123/otzaria-embeddings"
-DEFAULT_DB_PATH = r"C:\אוצריא\אוצריא\seforim.db"
+
+def _find_default_db() -> str:
+    paths = [
+        r"C:\אוצריא\אוצריא\seforim.db",
+        r"C:\אוצריא\seforim.db",
+        os.path.join(os.environ.get('APPDATA', ''), 'io.github.kdroidfilter.seforimapp', 'databases', 'seforim.db'),
+        r"C:\Users\daniely\AppData\Roaming\io.github.kdroidfilter.seforimapp\databases\seforim.db",
+        os.path.join(os.environ.get('APPDATA', ''), 'Otzaria', 'books', 'seforim.db'),
+        r"C:\Users\daniely\AppData\Roaming\Otzaria\books\seforim.db"
+    ]
+    for p in paths:
+        if p and os.path.exists(p):
+            return p
+    return paths[0]
+
+DEFAULT_DB_PATH = _find_default_db()
 DB_DOWNLOAD_URL = "https://github.com/Otzaria/otzaria-library/releases/download/library-db-1/seforim.zip"
 
 EDITION_PATHS = {
