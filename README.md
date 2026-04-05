@@ -36,6 +36,20 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+## מסד הנתונים של הספרים
+
+התוכנה עובדת על בסיס מסד הנתונים של [אוצריא](https://otzaria.org/) או של [זית](https://zayitapp.com/). אם אחת מהתוכנות האלו מוגדרת בנתיב ברירת המחדל, התוכנה תזהה את המיקום לבד, באם לא יש להגדיר את נתיב מסד הנתונים בהגדרות.
+
+אם התוכנות אינן מותקנות, ניתן להוריד ידנית את אחד ממסדי הנתונים לבחירה:
+
+- מסד הנתונים הדחוס של אוצריא: [seforim.db.zst](https://github.com/Otzaria/SeforimLibrary/releases/latest/download/seforim.db.zst)
+- מסד הנתונים הדחוס של זית, חלק ראשון: [seforim_bundle.tar.zst.part01](https://github.com/kdroidFilter/SeforimLibrary/releases/download/20260114122617/seforim_bundle.tar.zst.part01)
+- מסד הנתונים הדחוס של זית, חלק שני: [seforim_bundle.tar.zst.part02](https://github.com/kdroidFilter/SeforimLibrary/releases/download/20260114122617/seforim_bundle.tar.zst.part02)
+
+שימו לב - עבור מסד הנתונים של זית יש להוריד את שני החלקים של זית כדי לחלץ את הקובץ בהצלחה.
+
+לאחר ההורדה יש להגדיר את הנתיב של הקבצים המחולצים בהגדרות התוכנה.
+
 ## הרצה
 
 הרץ את היישום:
@@ -112,8 +126,6 @@ http://127.0.0.1:8000
 כברירת מחדל הקוד מצפה למודל embeddings מהמאגר:
 
 `ArieLLL123/otzaria-embeddings`
-
-בנוסף מוגדרת אפשרות להוריד מסד נתונים של הספרייה דרך GitHub Releases של פרויקט אוצריא.
 
 ## הערות שימוש
 
