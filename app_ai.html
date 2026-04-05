@@ -204,8 +204,78 @@
 
 <div class="container py-5 search-container {% if not query %}home-view{% endif %}">
     {% if not model_loaded or not db_exists %}
-    <div class="text-center mb-5"><h2 class="fw-bold mb-3">ברוך הבא למנוע החיפוש החכם</h2><p class="text-muted">אנא טען את המקורות בממשק ההגדרות למעלה כדי להתחיל.</p></div>
-    <div class="text-center"><button class="btn btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#settingsModal">פתח הגדרות מערכת</button></div>
+    <div id="setup-container" class="text-center mb-5 mt-4" style="display: none; animation: fadeInUp 0.5s ease-out both;">
+        <h2 class="display-5 fw-bold mb-3" style="letter-spacing: -1px;">ברוכים הבאים לאוצריא AI</h2>
+        <p class="text-muted fs-5 mb-4">כדי שהמערכת תוכל לפעול, יש לוודא שמסד הנתונים ומודל החיפוש נטענו.</p>
+        
+        <div class="d-flex justify-content-center gap-3 my-4 flex-wrap">
+            <!-- סטטוס מסד נתונים -->
+            <div class="card shadow-sm border-0 position-relative" style="width: 15rem; border-radius: 20px; overflow: hidden; background: var(--card-bg);">
+                <div class="card-body p-4 text-center">
+                    {% if db_exists %}
+                        <div class="mb-3" style="color: #10b981; filter: drop-shadow(0px 4px 8px rgba(16, 185, 129, 0.3));">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                            </svg>
+                        </div>
+                        <h5 class="fw-bold mb-2" style="color: #10b981;">מסד נתונים (DB)</h5>
+                        <span class="badge" style="background-color: rgba(16, 185, 129, 0.1); color: #10b981; font-size: 0.9rem; padding: 8px 16px;">נטען בהצלחה</span>
+                    {% else %}
+                        <div class="mb-3" style="color: #ef4444; filter: drop-shadow(0px 4px 8px rgba(239, 68, 68, 0.3));">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="15" y1="9" x2="9" y2="15"></line>
+                                <line x1="9" y1="9" x2="15" y2="15"></line>
+                            </svg>
+                        </div>
+                        <h5 class="fw-bold mb-2" style="color: #ef4444;">מסד נתונים (DB)</h5>
+                        <span class="badge" style="background-color: rgba(239, 68, 68, 0.1); color: #ef4444; font-size: 0.9rem; padding: 8px 16px;">חסר קובץ מקור</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- סטטוס מודל -->
+            <div class="card shadow-sm border-0 position-relative" style="width: 15rem; border-radius: 20px; overflow: hidden; background: var(--card-bg);">
+                <div class="card-body p-4 text-center">
+                    {% if model_loaded %}
+                        <div class="mb-3" style="color: #10b981; filter: drop-shadow(0px 4px 8px rgba(16, 185, 129, 0.3));">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                            </svg>
+                        </div>
+                        <h5 class="fw-bold mb-2" style="color: #10b981;">מודל חיפוש (AI)</h5>
+                        <span class="badge" style="background-color: rgba(16, 185, 129, 0.1); color: #10b981; font-size: 0.9rem; padding: 8px 16px;">נטען בהצלחה</span>
+                    {% else %}
+                        <div class="mb-3" style="color: #ef4444; filter: drop-shadow(0px 4px 8px rgba(239, 68, 68, 0.3));">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="15" y1="9" x2="9" y2="15"></line>
+                                <line x1="9" y1="9" x2="15" y2="15"></line>
+                            </svg>
+                        </div>
+                        <h5 class="fw-bold mb-2" style="color: #ef4444;">מודל חיפוש (AI)</h5>
+                        <span class="badge" style="background-color: rgba(239, 68, 68, 0.1); color: #ef4444; font-size: 0.9rem; padding: 8px 16px;">חסר קובץ מודל</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <button class="btn btn-primary px-5 py-3 rounded-pill shadow" data-bs-toggle="modal" data-bs-target="#settingsModal" style="font-size: 1.2rem; font-weight: 600; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2" style="vertical-align: -0.1em;">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            פתיחת הגדרות לטעינת החסר
+        </button>
+    </div>
+    
+    <div id="boot-loading-container" class="text-center mb-5 mt-5" style="animation: fadeInUp 0.5s ease-out both;">
+        <div class="spinner-border text-primary mb-4" style="width: 4rem; height: 4rem;" role="status"></div>
+        <h2 class="fw-bold mb-3" style="letter-spacing: -1px;">המערכת בטעינה...</h2>
+        <p class="text-muted fs-5" id="boot-loading-desc">אנא המתן בזמן שהמערכת מכינה את הנתונים.</p>
+    </div>
     {% else %}
     
     <div class="text-center mb-4 {% if query %}d-none{% endif %}">
@@ -307,6 +377,29 @@
                             <div class="tab-content" id="settingsTabsContent">
                                 <div class="tab-pane fade show active" id="general">
                                     <div class="settings-header d-flex justify-content-between align-items-center"><div class="w-75"><h5 class="fw-bold mb-1">ניהול מקורות ומודלים</h5><p class="text-muted small mb-0">הגדרת קבצי המידע והמודלים עליהם המערכת מתבססת</p></div><i class="bi bi-database-check fs-2 text-primary opacity-25"></i></div>
+                                    
+                                    <!-- סטטוס טעינה נוכחי בתוך ההגדרות -->
+                                    <div class="d-flex gap-3 mb-4">
+                                        <div class="d-flex align-items-center gap-3 p-2 px-3 border rounded shadow-sm flex-grow-1" style="background-color: var(--bg-color);">
+                                            {% if db_exists %}
+                                                <i class="bi bi-check-circle-fill text-success fs-3"></i>
+                                                <div><div class="fw-bold" style="font-size: 0.9rem;">מסד נתונים (DB)</div><div class="text-success small">תקין ומוכן</div></div>
+                                            {% else %}
+                                                <i class="bi bi-x-circle-fill text-danger fs-3"></i>
+                                                <div><div class="fw-bold" style="font-size: 0.9rem;">מסד נתונים (DB)</div><div class="text-danger small">חסר / שגיאה</div></div>
+                                            {% endif %}
+                                        </div>
+                                        <div class="d-flex align-items-center gap-3 p-2 px-3 border rounded shadow-sm flex-grow-1" style="background-color: var(--bg-color);">
+                                            {% if model_loaded %}
+                                                <i class="bi bi-check-circle-fill text-success fs-3"></i>
+                                                <div><div class="fw-bold" style="font-size: 0.9rem;">מודל חיפוש (AI)</div><div class="text-success small">תקין ומוכן</div></div>
+                                            {% else %}
+                                                <i class="bi bi-x-circle-fill text-danger fs-3"></i>
+                                                <div><div class="fw-bold" style="font-size: 0.9rem;">מודל חיפוש (AI)</div><div class="text-danger small">חסר / שגיאה</div></div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+
                                     <div class="mb-4">
                                         <label class="form-label small fw-bold text-muted">נתיב בסיס נתונים (SQLite DB)</label>
                                         <div class="input-group shadow-sm">
@@ -900,6 +993,24 @@
             }
             if(dotEl) { dotEl.className = data.state === 'ready' ? 'rounded-circle bg-success me-2' : (data.state === 'indexing' || data.state === 'downloading' || data.state === 'loading' ? 'rounded-circle bg-warning me-2 spinner-grow spinner-grow-sm' : (data.state === 'error' ? 'rounded-circle bg-danger me-2' : 'rounded-circle bg-secondary me-2')); }
             if(typeof data.count !== 'undefined' && countEl) countEl.innerText = data.count.toLocaleString();
+            
+            {% if not model_loaded or not db_exists %}
+            const setupContainer = document.getElementById('setup-container');
+            const bootContainer = document.getElementById('boot-loading-container');
+            if (setupContainer && bootContainer) {
+                if (data.state === 'ready') {
+                    window.location.reload();
+                } else if (data.state === 'indexing' || data.state === 'downloading' || data.state === 'loading' || data.state === 'idle') {
+                    setupContainer.style.display = 'none';
+                    bootContainer.style.display = 'block';
+                    document.getElementById('boot-loading-desc').innerText = data.msg + (data.progress > 0 ? ` (${data.progress}%)` : '');
+                } else {
+                    setupContainer.style.display = 'block';
+                    bootContainer.style.display = 'none';
+                }
+            }
+            {% endif %}
+
             setTimeout(updateStatus, (data.state === 'indexing' || data.state === 'downloading' || data.state === 'loading') ? 1000 : 5000);
         }).catch(e => setTimeout(updateStatus, 5000));
     }
