@@ -429,7 +429,10 @@
                                     
                                     <div class="card mb-4 border-0 shadow-sm" style="background-color: var(--sidebar-bg);">
                                         <div class="card-body">
-                                            <h6 class="fw-bold mb-3 text-primary"><i class="bi bi-layers me-2"></i>בניית האינדקס (דורש טעינה מחדש)</h6>
+                                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                                <h6 class="fw-bold mb-0 text-primary"><i class="bi bi-layers me-2"></i>בניית האינדקס (דורש טעינה מחדש)</h6>
+                                                <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="resetIndex()"><i class="bi bi-trash3 me-1"></i> איפוס אינדקס</button>
+                                            </div>
                                             <div class="mb-3">
                                                 <label class="form-label small fw-bold text-muted">מספר רשומות מקסימלי</label>
                                                 <input type="number" name="max_chunks" class="form-control" value="{{ max_chunks }}">
@@ -1260,6 +1263,20 @@
             const headerVisible = header.style.display !== 'none';
             node.style.display = (hasVisibleChildren || headerVisible) ? '' : 'none';
         });
+    }
+    
+    function resetIndex() {
+        if (confirm("האם אתה בטוח שברצונך למחוק את האינדקס הקיים? המערכת תבנה אותו מחדש בפעם הבאה שתבצע חיפוש או תשמור הגדרות.")) {
+            fetch('/api/reset_index', {method: 'POST'})
+                .then(r => r.json())
+                .then(data => {
+                    if(data.status === 'ok') {
+                        window.location.reload();
+                    } else {
+                        alert("שגיאה באיפוס האינדקס: " + data.error);
+                    }
+                });
+        }
     }
 
     document.addEventListener('change', function(e) {

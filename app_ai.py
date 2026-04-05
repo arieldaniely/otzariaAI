@@ -1349,6 +1349,21 @@ def logs_api():
         "count": ENGINE.built.count if ENGINE.built else 0,
     })
 
+@app.route("/api/reset_index", methods=["POST"])
+def reset_index():
+    try:
+        for fname in os.listdir(RUNTIME_DIR):
+            if fname.endswith(".index") or fname.endswith(".sqlite") or fname.endswith(".tmp"):
+                try:
+                    os.remove(os.path.join(RUNTIME_DIR, fname))
+                except OSError:
+                    pass
+        ENGINE.built = None
+        ENGINE.log("האינדקס נמחק ואופס בהצלחה על ידי המשתמש.", "info")
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)})
+
 # Helper UI Routes
 @app.route("/upload_model", methods=["POST"])
 def upload_model():
