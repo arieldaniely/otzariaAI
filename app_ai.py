@@ -66,20 +66,28 @@ else:
 
 BASE_DIR = EXE_DIR  # תמיכה לאחור בקוד שמשתמש ב-BASE_DIR
 
-CACHE_DIR = os.path.join(EXE_DIR, "hf_cache")
-RUNTIME_DIR = os.path.join(EXE_DIR, "runtime")
-DB_DIR = os.path.join(EXE_DIR, "db")
+def _user_data_dir() -> str:
+    if sys.platform == "darwin":
+        return os.path.expanduser("~/Library/Application Support/Otzaria AI")
+    return EXE_DIR
+
+
+DATA_DIR = _user_data_dir() if getattr(sys, 'frozen', False) else EXE_DIR
+
+CACHE_DIR = os.path.join(DATA_DIR, "hf_cache")
+RUNTIME_DIR = os.path.join(DATA_DIR, "runtime")
+DB_DIR = os.path.join(DATA_DIR, "db")
 
 # בדיקה אם המודלים ארוזים בתוך ה-EXE או נמצאים בחוץ
 # הגדרה קבועה לתיקייה מחוץ ל-EXE כדי שהעלאות דרך הממשק יישמרו לתמיד
-MODELS_ZIPS_DIR = os.path.join(EXE_DIR, "models_zips")
+MODELS_ZIPS_DIR = os.path.join(DATA_DIR, "models_zips")
 
 if os.path.exists(os.path.join(BUNDLE_DIR, "static")):
     STATIC_DIR = os.path.join(BUNDLE_DIR, "static")
 else:
-    STATIC_DIR = os.path.join(EXE_DIR, "static")
+    STATIC_DIR = os.path.join(DATA_DIR, "static")
 
-LOCAL_MODELS_DIR = os.path.join(EXE_DIR, "local_models")
+LOCAL_MODELS_DIR = os.path.join(DATA_DIR, "local_models")
 
 SETTINGS_PATH = os.path.join(RUNTIME_DIR, "settings.json")
 
@@ -891,7 +899,7 @@ def highlight_text(text, query):
 def ensure_offline_assets():
     """Downloads static assets (CSS, JS, Fonts) for offline use."""
     # print("Checking offline assets...") # שקט יותר בהפעלה
-    static_dir = os.path.join(EXE_DIR, "static")
+    static_dir = STATIC_DIR
     os.makedirs(static_dir, exist_ok=True)
     
     assets = [

@@ -56,12 +56,23 @@ jobs:
           - os: windows-latest
             build_target: windows
             package_kind: zip
+            artifact_suffix: windows
+            target_arch: ""
+          - os: macos-15-intel
+            build_target: macos
+            package_kind: zip
+            artifact_suffix: macos-intel
+            target_arch: x86_64
           - os: macos-latest
             build_target: macos
             package_kind: zip
+            artifact_suffix: macos-apple-silicon
+            target_arch: arm64
           - os: ubuntu-latest
             build_target: linux
             package_kind: tar.gz
+            artifact_suffix: linux
+            target_arch: ""
 
     steps:
       - name: Checkout repository
@@ -130,6 +141,7 @@ jobs:
           elif [ "${{ matrix.build_target }}" = "macos" ] && [ -f "static/icon.icns" ]; then
             ICON_ARG="--icon static/icon.icns"
             EXTRA_ARGS+=(--osx-bundle-identifier "${{ env.BUNDLE_ID }}")
+            EXTRA_ARGS+=(--target-architecture "${{ matrix.target_arch }}")
           fi
 
           pyinstaller \
@@ -147,24 +159,34 @@ jobs:
             "${EXTRA_ARGS[@]}" \
             app_ai_desktop.py
 
-      - name: Package zip build
-        if: matrix.package_kind == 'zip'
+      - name: Ad-hoc sign macOS app
+        if: matrix.build_target == 'macos'
+        shell: bash
+        run: |
+          codesign --force --deep --sign - "dist/${{ env.EXECUTABLE_NAME }}.app"
+          codesign --verify --deep --strict "dist/${{ env.EXECUTABLE_NAME }}.app"
+
+      - name: Package Windows zip build
+        if: matrix.build_target == 'windows'
         shell: pwsh
         run: |
-          $platform = "${{ matrix.build_target }}"
-          $archive = "${{ env.EXECUTABLE_NAME }}-${{ needs.prepare-version.outputs.app_version }}-$platform.zip"
-          if ("${{ matrix.build_target }}" -eq "macos") {
-            Compress-Archive -Path "dist/${{ env.EXECUTABLE_NAME }}.app" -DestinationPath $archive -Force
-          } else {
-            Compress-Archive -Path "dist/${{ env.EXECUTABLE_NAME }}.exe" -DestinationPath $archive -Force
-          }
+          $archive = "${{ env.EXECUTABLE_NAME }}-${{ needs.prepare-version.outputs.app_version }}-${{ matrix.artifact_suffix }}.zip"
+          Compress-Archive -Path "dist/${{ env.EXECUTABLE_NAME }}.exe" -DestinationPath $archive -Force
           "ARCHIVE_NAME=$archive" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Package macOS app
+        if: matrix.build_target == 'macos'
+        shell: bash
+        run: |
+          archive="${{ env.EXECUTABLE_NAME }}-${{ needs.prepare-version.outputs.app_version }}-${{ matrix.artifact_suffix }}.zip"
+          ditto -c -k --keepParent "dist/${{ env.EXECUTABLE_NAME }}.app" "$archive"
+          echo "ARCHIVE_NAME=$archive" >> "$GITHUB_ENV"
 
       - name: Package Linux build
         if: matrix.package_kind == 'tar.gz'
         shell: bash
         run: |
-          archive="${{ env.EXECUTABLE_NAME }}-${{ needs.prepare-version.outputs.app_version }}-linux.tar.gz"
+          archive="${{ env.EXECUTABLE_NAME }}-${{ needs.prepare-version.outputs.app_version }}-${{ matrix.artifact_suffix }}.tar.gz"
           tar -czf "$archive" -C dist "${{ env.EXECUTABLE_NAME }}"
           echo "ARCHIVE_NAME=$archive" >> "$GITHUB_ENV"
 
