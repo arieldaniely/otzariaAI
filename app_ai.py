@@ -211,6 +211,24 @@ def find_model_files(root_dir: str, edition: str) -> tuple[str, str]:
         return str(cands[0])
     return pick(candidates_vocab), pick(candidates_emb)
 
+def resolve_zip_model_path(edition: str, zip_path: str = "") -> str:
+    if zip_path and os.path.exists(zip_path):
+        return zip_path
+    local_zip_path = os.path.join(MODELS_ZIPS_DIR, f"otzaria_embeddings_{edition}.zip")
+    if os.path.exists(local_zip_path):
+        return local_zip_path
+    bundled_zip_path = os.path.join(BUNDLE_DIR, "models_zips", f"otzaria_embeddings_{edition}.zip")
+    if os.path.exists(bundled_zip_path):
+        return bundled_zip_path
+    return zip_path or local_zip_path
+
+def has_model_source_available(cfg: dict) -> bool:
+    model_source = cfg.get("model_source", "zip")
+    edition = cfg.get("edition", "v3")
+    if model_source == "zip":
+        return os.path.exists(resolve_zip_model_path(edition, cfg.get("zip_path", "")))
+    return True
+
 # =========================
 # DATABASE & STREAMING
 # =========================
@@ -440,11 +458,7 @@ class Engine:
         try:
             self._update("downloading", f"טוען מודל {edition} ({model_source})...", 5)
             if model_source == "zip":
-                if not zip_path:
-                    zip_path = os.path.join(MODELS_ZIPS_DIR, f"otzaria_embeddings_{edition}.zip")
-                    # אם אין מודל חיצוני ליד התוכנה, נשתמש במודל הפנימי שארוז בתוך ה-EXE
-                    if getattr(sys, 'frozen', False) and not os.path.exists(zip_path):
-                        zip_path = os.path.join(BUNDLE_DIR, "models_zips", f"otzaria_embeddings_{edition}.zip")
+                zip_path = resolve_zip_model_path(edition, zip_path)
                 extracted_root = ensure_zip_extracted(zip_path)
                 vocab_path, emb_path = find_model_files(extracted_root, edition)
             else:
@@ -1296,6 +1310,8 @@ def index():
     current_db = cfg.get("db_path", DEFAULT_DB_PATH)
     db_exists = os.path.exists(current_db)
     model_loaded = (ENGINE.model is not None)
+    model_expected = model_loaded or has_model_source_available(cfg)
+    show_boot_loading = db_exists and model_expected and ENGINE.status["state"] != "error"
 
     top_k = int(cfg.get("top_k", DEFAULT_TOP_K))
     min_score = float(cfg.get("min_score", DEFAULT_MIN_SCORE)) / 100.0
@@ -1363,6 +1379,7 @@ def index():
         model_source=cfg.get("model_source", "zip"), zip_path=cfg.get("zip_path", ""), idx_count=idx_c, books=sorted_books, 
         selected_books=selected_books, top_k=top_k, min_score=int(cfg.get("min_score", 0)),
         page=page, total_results=total_results, total_pages=total_pages, pagination_pages=pagination_pages,
+        model_expected=model_expected, show_boot_loading=show_boot_loading,
         ideal_chunk_words=int(cfg.get("ideal_chunk_words", IDEAL_CHUNK_WORDS)),
         max_chunk_words=int(cfg.get("max_chunk_words", MAX_CHUNK_WORDS)),
         overlap_words=int(cfg.get("overlap_words", DEFAULT_OVERLAP_WORDS)),
@@ -1733,10 +1750,14 @@ def select_local_zip():
 if __name__ == "__main__":
     cfg = load_settings()
     ENGINE.last_cfg = cfg
+    initial_db_path = cfg.get("db_path", DEFAULT_DB_PATH)
+    if os.path.exists(initial_db_path) and has_model_source_available(cfg):
+        ENGINE._update("loading", "מכין את מנוע החיפוש...", 1)
+
     def boot():
         try:
-            ENGINE.load_resources(cfg.get("db_path", DEFAULT_DB_PATH), cfg.get("edition", "v3"), cfg.get("model_source", "zip"), cfg.get("zip_path", ""))
-            ENGINE.build_index(cfg.get("db_path", DEFAULT_DB_PATH), int(cfg.get("max_chunks", 100000)),
+            ENGINE.load_resources(initial_db_path, cfg.get("edition", "v3"), cfg.get("model_source", "zip"), cfg.get("zip_path", ""))
+            ENGINE.build_index(initial_db_path, int(cfg.get("max_chunks", 100000)),
                                int(cfg.get("ideal_chunk_words", IDEAL_CHUNK_WORDS)),
                                int(cfg.get("max_chunk_words", MAX_CHUNK_WORDS)),
                                int(cfg.get("overlap_words", DEFAULT_OVERLAP_WORDS)),
