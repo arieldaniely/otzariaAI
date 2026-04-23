@@ -17,10 +17,18 @@ import app_ai
 
 
 HOST = "127.0.0.1"
+DEFAULT_PORT = 8000
 WINDOW_TITLE = "אוצריא AI"
 
 
-def pick_free_port(host: str = HOST) -> int:
+def pick_free_port(host: str = HOST, preferred: int = DEFAULT_PORT) -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind((host, preferred))
+            return preferred
+        except OSError:
+            pass
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind((host, 0))
         return sock.getsockname()[1]

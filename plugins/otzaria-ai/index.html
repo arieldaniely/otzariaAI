@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>אוצריא AI</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>אוצריא AI</h1>
+        <p id="statusText">ממתין לאתחול התוסף...</p>
+      </div>
+      <div class="header-actions">
+        <button id="pauseIndex" class="icon-button" type="button" title="עצור אינדוקס" aria-label="עצור אינדוקס" hidden>⏸</button>
+        <button id="rebuildIndex" class="icon-button" type="button" title="בנה אינדקס מחדש" aria-label="בנה אינדקס מחדש">↻</button>
+      </div>
+    </header>
+
+    <section class="index-panel" aria-live="polite">
+      <div class="index-row index-row-main">
+        <div>
+          <strong id="indexTitle">מכין אינדקס מקומי</strong>
+          <span id="indexMeta">0 ספרים, 0 מקטעים</span>
+        </div>
+        <button id="startIndex" class="secondary" type="button">המשך</button>
+      </div>
+      <div class="progress-track" aria-hidden="true">
+        <div id="indexProgress" class="progress-fill"></div>
+      </div>
+      <div id="indexDetail" class="index-detail">האינדקס נשמר בתוך התוסף.</div>
+    </section>
+
+    <section class="search-panel">
+      <form id="searchForm" class="search-form">
+        <input id="queryInput" type="search" autocomplete="off" placeholder="חפש רעיון, לשון או סוגיה..." required>
+        <button id="searchButton" type="submit">חפש</button>
+      </form>
+      <div id="suggestions" class="suggestions" hidden></div>
+    </section>
+
+    <div id="resultSummary" class="result-summary" hidden></div>
+    <section id="results" class="results" aria-live="polite"></section>
+    <nav id="pagination" class="pagination" aria-label="דפי תוצאות" hidden></nav>
+  </main>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

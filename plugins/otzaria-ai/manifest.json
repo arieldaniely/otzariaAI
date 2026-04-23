@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "com.arieldaniely.otzaria-ai",
+  "name": "אוצריא AI",
+  "version": "0.1.0",
+  "description": "חיפוש עצמאי במאגר אוצריא מתוך התוסף, ללא שירות מקומי חיצוני.",
+  "author": "Ariel Daniely",
+  "homepage": "https://github.com/arieldaniely/otzaria-ai",
+  "entrypoint": "index.html",
+  "minAppVersion": "0.9.90",
+  "sdkVersion": "1.x",
+  "permissions": [
+    "app.info.read",
+    "library.books.read",
+    "library.content.read",
+    "reader.open",
+    "ui.feedback"
+  ],
+  "network": {
+    "enabled": false,
+    "allowlist": []
+  },
+  "contributes": {
+    "toolTab": {
+      "title": "אוצריא AI",
+      "order": 210,
+      "defaultPinned": true
+    },
+    "publishedDataTypes": []
+  }
+}

@@ -839,6 +839,14 @@ ENGINE = Engine()
 app = Flask(__name__)
 app.secret_key = "otzaria_ai_secret_v5"
 
+@app.after_request
+def add_local_api_headers(response):
+    if request.path == "/status" or request.path.startswith("/api/"):
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return response
+
 BASE_DIR = Path(__file__).parent
 HTML_TEMPLATE = (BASE_DIR / "app_ai.html").read_text(encoding="utf-8")
 
@@ -1117,6 +1125,84 @@ def index():
         decay_2=cfg.get("decay_2", 0.75), decay_3=cfg.get("decay_3", 0.35), decay_4=cfg.get("decay_4", 0.05),
         expanded_query=expanded_query, index_book_ids=index_book_ids
     )
+
+@app.route("/api/search")
+def search_api():
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify({"success": False, "error": "missing_query", "results": []}), 400
+
+    cfg = ENGINE.last_cfg or {}
+    current_db = cfg.get("db_path", DEFAULT_DB_PATH)
+    db_exists = os.path.exists(current_db)
+    model_loaded = ENGINE.model is not None
+    index_ready = ENGINE.built is not None
+    status = ENGINE.status.copy()
+
+    limit = request.args.get("limit", type=int) or int(cfg.get("top_k", DEFAULT_TOP_K))
+    limit = max(1, min(limit, 50))
+    min_score = request.args.get("min_score", type=float)
+    if min_score is None:
+        min_score = float(cfg.get("min_score", DEFAULT_MIN_SCORE)) / 100.0
+
+    book_ids = [int(b) for b in request.args.getlist("book_id") if str(b).isdigit()]
+
+    if not db_exists or not model_loaded or not index_ready:
+        if db_exists and not index_ready and status.get("state") not in ("indexing", "downloading", "loading"):
+            index_book_ids = [int(b) for b in cfg.get("index_book_ids", []) if str(b).isdigit()]
+
+            def task():
+                try:
+                    ENGINE.load_resources(
+                        current_db,
+                        cfg.get("edition", "v3"),
+                        model_source=cfg.get("model_source", "zip"),
+                        zip_path=cfg.get("zip_path", ""),
+                    )
+                    ENGINE.build_index(
+                        current_db,
+                        int(cfg.get("max_chunks", 100000)),
+                        int(cfg.get("ideal_chunk_words", IDEAL_CHUNK_WORDS)),
+                        int(cfg.get("max_chunk_words", MAX_CHUNK_WORDS)),
+                        int(cfg.get("overlap_words", DEFAULT_OVERLAP_WORDS)),
+                        index_book_ids,
+                    )
+                except Exception as e:
+                    ENGINE._update("error", f"שגיאה: {e}", 0)
+
+            threading.Thread(target=task, daemon=True).start()
+            status = ENGINE.status.copy()
+
+        return jsonify({
+            "success": False,
+            "error": "not_ready",
+            "ready": False,
+            "dbExists": db_exists,
+            "modelLoaded": model_loaded,
+            "indexReady": index_ready,
+            "status": status,
+            "results": [],
+        }), 503
+
+    correction = ENGINE.check_spelling(q)
+    did_you_mean = correction if correction and correction != clean_text(q) else None
+    expanded_query = q
+    if ENGINE.model:
+        expanded_query = " ".join(ENGINE.get_expanded_terms(clean_text(q)))
+
+    raw = ENGINE.search(q, book_filter=book_ids if book_ids else None, top_k=limit * 3)
+    filtered = [r for r in raw if r["score"] >= min_score][:limit]
+
+    return jsonify({
+        "success": True,
+        "ready": True,
+        "query": q,
+        "didYouMean": did_you_mean,
+        "expandedQuery": expanded_query,
+        "count": len(filtered),
+        "status": status,
+        "results": filtered,
+    })
 @app.route("/api/autocomplete")
 def autocomplete():
     """השלמה אוטומטית פשוטה: השלמת מילים בודדות מתוך המילון"""

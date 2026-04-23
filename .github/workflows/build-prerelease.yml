@@ -174,11 +174,40 @@ jobs:
           name: ${{ env.ARCHIVE_NAME }}
           path: ${{ env.ARCHIVE_NAME }}
 
+  build-plugin:
+    needs: prepare-version
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Package Otzaria plugin
+        shell: bash
+        run: |
+          plugin="OtzariaAI-plugin-${{ needs.prepare-version.outputs.app_version }}.otzplugin"
+          python scripts/package_otzaria_plugin.py \
+            --version "${{ needs.prepare-version.outputs.app_version }}" \
+            --output "$plugin"
+          echo "PLUGIN_NAME=$plugin" >> "$GITHUB_ENV"
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PLUGIN_NAME }}
+          path: ${{ env.PLUGIN_NAME }}
+
   publish-release:
     runs-on: ubuntu-latest
     needs:
       - prepare-version
       - build
+      - build-plugin
 
     steps:
       - name: Download all build artifacts
