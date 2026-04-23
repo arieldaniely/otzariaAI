@@ -127,6 +127,10 @@ def clean_text(s: str) -> str:
     s = NON_WORD_RE.sub(" ", s)
     return " ".join(s.split())
 
+def strip_niqqud(s: str) -> str:
+    if not s: return ""
+    return NIQQUD_RE.sub("", s)
+
 @functools.lru_cache(maxsize=10000)
 def hebrew_stem(word: str) -> str:
     if len(word) < 4: return word
@@ -895,6 +899,69 @@ def highlight_text(text, query):
         return full_match
     try: return re.sub(combined_pattern, replacer, text)
     except: return text
+
+def highlight_text(text, query):
+    text = close_html_tags(text)
+    if not query: return text
+    q_words = [hebrew_stem(w) for w in clean_text(query).split() if len(w) > 1]
+    if not q_words: return text
+
+    prefixes = "ובשהלמכ"
+    token_pattern = "|".join(re.escape(w) for w in sorted(set(q_words), key=len, reverse=True))
+    combined_pattern = re.compile(
+        rf"(^|[\s\"'\-])([{prefixes}]?(?:{token_pattern}))(?=[\s\"'\.\,\-]|$)"
+    )
+
+    def highlight_plain_segment(segment: str) -> str:
+        normalized_chars = []
+        index_map = []
+        for idx, ch in enumerate(segment):
+            normalized = strip_niqqud(ch)
+            if not normalized:
+                continue
+            normalized_chars.append(normalized)
+            index_map.extend([idx] * len(normalized))
+
+        normalized_segment = "".join(normalized_chars)
+        if not normalized_segment:
+            return segment
+
+        ranges = []
+        for match in combined_pattern.finditer(normalized_segment):
+            start_norm, end_norm = match.span(2)
+            if start_norm >= len(index_map) or end_norm <= 0:
+                continue
+            start_idx = index_map[start_norm]
+            end_idx = index_map[end_norm - 1] + 1
+            ranges.append((start_idx, end_idx))
+
+        if not ranges:
+            return segment
+
+        merged = []
+        for start_idx, end_idx in ranges:
+            if merged and start_idx <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end_idx))
+            else:
+                merged.append((start_idx, end_idx))
+
+        parts = []
+        last_idx = 0
+        for start_idx, end_idx in merged:
+            parts.append(segment[last_idx:start_idx])
+            parts.append(f"<mark>{segment[start_idx:end_idx]}</mark>")
+            last_idx = end_idx
+        parts.append(segment[last_idx:])
+        return "".join(parts)
+
+    try:
+        parts = re.split(r"(<[^>]+>)", text)
+        for i, part in enumerate(parts):
+            if part and not part.startswith("<"):
+                parts[i] = highlight_plain_segment(part)
+        return "".join(parts)
+    except:
+        return text
 
 def ensure_offline_assets():
     """Downloads static assets (CSS, JS, Fonts) for offline use."""
