@@ -93,6 +93,12 @@ SETTINGS_PATH = os.path.join(RUNTIME_DIR, "settings.json")
 
 DEFAULT_TOP_K = 20
 DEFAULT_MIN_SCORE = 0.0
+SEARCH_MIN_RESULTS = 12
+SEARCH_TARGET_RESULTS = 40
+SEARCH_MAX_RESULTS = 250
+SEARCH_INITIAL_CANDIDATES = 160
+SEARCH_MAX_CANDIDATES = 5000
+SEARCH_CACHE_SIZE = 24
 
 os.makedirs(CACHE_DIR, exist_ok=True)
 os.makedirs(RUNTIME_DIR, exist_ok=True)
@@ -382,6 +388,7 @@ class Engine:
         self._lock = threading.RLock()
         self._log_seq = 0
         self.log_entries: deque = deque(maxlen=500)
+        self.search_cache: Dict[str, List[Dict]] = {}
         self.last_cfg = load_settings()
         self._append_log("idle", self.status["msg"], self.status["progress"])
 
@@ -525,9 +532,13 @@ class Engine:
         # 🔹 OPTIMIZATION: Use IVF Index for large datasets (>20k chunks)
         # This changes complexity from O(N) to O(log N) roughly.
         use_ivf = max_chunks > 20000
+        train_size = 0
         if use_ivf:
-            # Calculate number of clusters (centroids) based on dataset size
-            nlist = int(4 * math.sqrt(max_chunks))
+            # FAISS requires at least one training vector per centroid.
+            # Keep the training sample bounded, but always large enough for nlist.
+            target_nlist = int(4 * math.sqrt(max_chunks))
+            train_size = min(max_chunks, max(10000, min(100000, target_nlist * 8)))
+            nlist = max(1, min(target_nlist, train_size))
             quantizer = faiss.IndexFlatIP(d)
             # IndexIVFFlat requires training
             ivf_index = faiss.IndexIVFFlat(quantizer, d, nlist, faiss.METRIC_INNER_PRODUCT)
@@ -554,7 +565,12 @@ class Engine:
             total_processed += 1
 
             if len(vectors) >= batch_size:
-                # Train IVF index on the first batch if needed
+                if use_ivf and not is_trained and total_processed < train_size:
+                    pct = min(20, int((total_processed / max(train_size, 1)) * 20))
+                    self._update("indexing", f"צובר דגימות לאימון אינדקס IVF ({total_processed:,}/{train_size:,})", pct)
+                    continue
+
+                # Train IVF index once enough samples were buffered
                 if use_ivf and not is_trained:
                     self._update("indexing", "מאמן אינדקס וקטורי (IVF)...", 5)
                     # We need to access the sub-index to train
@@ -573,8 +589,9 @@ class Engine:
 
         if vectors:
             if use_ivf and not is_trained:
-                 # Edge case: Total records < batch_size but > 20k (unlikely config, but safe to handle)
+                 # Handle the final buffered training sample before the first add
                  index.index.train(np.vstack(vectors))
+                 is_trained = True
             
             index.add_with_ids(np.vstack(vectors), np.array(ids).astype("int64"))
             con.executemany("INSERT INTO chunks VALUES (?,?,?,?,?)", db_buffer)
@@ -707,11 +724,13 @@ class Engine:
         except: return []
         finally: con.close()
 
-    def search(self, query: str, book_filter: Optional[List[int]] = None, top_k: int = 20):
+    def search(self, query: str, book_filter: Optional[List[int]] = None, top_k: Optional[int] = 20):
         if not self.model or not self.built: return []
         q_clean = clean_text(query)
         q_vec = self._text_to_vec(q_clean)
         if q_vec is None: return []
+        requested_k = None if not top_k or top_k <= 0 else int(top_k)
+        index_count = int(self.built.count or 0)
 
         # 1) מועמדים וקטוריים עם סינון מוקדם (Pre-filtering)
         search_params = None
@@ -723,6 +742,7 @@ class Engine:
             con.close()
             
             target_ids = np.array([r[0] for r in res], dtype=np.int64)
+            search_space_count = int(len(target_ids))
             if len(target_ids) == 0:
                 return [] # אין מקטעים מאונדקסים עבור הספרים שנבחרו
                 
@@ -736,14 +756,18 @@ class Engine:
                 search_params = faiss.SearchParameters(sel=selector)
             
             # כשמסננים מראש, אין צורך ב-K ענקי כי כל התוצאות שיחזרו הן מהספרים הנכונים
-            vec_candidates_k = max(top_k * 4, 100)
+            vec_candidates_k = search_space_count if requested_k is None else max(requested_k * 4, 100)
         else:
-            vec_candidates_k = max(top_k * 20, 200)
+            search_space_count = index_count
+            vec_candidates_k = index_count if requested_k is None else max(requested_k * 20, 200)
+
+        if search_space_count <= 0:
+            return []
 
         scores, ids = self.built.faiss_index.search(np.array([q_vec]), vec_candidates_k, params=search_params)
         vec_found_ids = [int(i) for i in ids[0] if i >= 0]
 
-        fts_candidates_k = max(top_k * 20, 200)
+        fts_candidates_k = search_space_count if requested_k is None else max(requested_k * 20, 200)
         fts_rows = self._fts_candidates(q_clean, fts_candidates_k, book_filter=book_filter)
         fts_found_ids = [rid for rid, _ in fts_rows]
 
@@ -829,7 +853,7 @@ class Engine:
             })
 
         results.sort(key=lambda x: x["score"], reverse=True)
-        return results[:top_k]
+        return results if requested_k is None else results[:requested_k]
 
     def get_indexed_book_ids(self) -> Set[int]:
         """מחזיר את רשימת ה-IDs של הספרים שקיימים באינדקס בפועל"""
@@ -962,6 +986,145 @@ def highlight_text(text, query):
         return "".join(parts)
     except:
         return text
+
+def _result_feat(result: Dict, key: str, default: float = 0.0) -> float:
+    return float(result.get("features", {}).get(key, default) or default)
+
+def _passes_relevance_gate(result: Dict, token_count: int, relaxed: bool = False) -> bool:
+    vec = _result_feat(result, "vec")
+    bm = _result_feat(result, "bm")
+    overlap = _result_feat(result, "overlap")
+    phrase = _result_feat(result, "phrase")
+    prox = _result_feat(result, "prox")
+
+    if phrase >= 1.0:
+        return True
+    if overlap >= 0.72:
+        return True
+    if overlap >= 0.5 and (bm >= 0.08 or vec >= 0.22 or prox >= 0.08):
+        return True
+    if bm >= 0.22 and overlap >= 0.2:
+        return True
+    if vec >= 0.72 and overlap >= 0.18:
+        return True
+
+    if relaxed:
+        short_query = token_count <= 2
+        if overlap >= (0.2 if short_query else 0.26) and (bm >= 0.05 or vec >= 0.18 or prox >= 0.05):
+            return True
+        if bm >= 0.16 and (overlap >= 0.12 or vec >= 0.28):
+            return True
+        if vec >= (0.60 if short_query else 0.66) and overlap >= 0.1:
+            return True
+
+    return False
+
+def _adaptive_relevance_filter(raw_results: List[Dict], min_score: float, query: str) -> List[Dict]:
+    if not raw_results:
+        return []
+
+    token_count = max(1, len(get_tokens(clean_text(query))))
+    score_floor = max(0.0, float(min_score or 0.0))
+    prefiltered = [r for r in raw_results if float(r.get("score", 0.0)) >= score_floor]
+    if not prefiltered:
+        return []
+
+    strict_pool = [r for r in prefiltered if _passes_relevance_gate(r, token_count, relaxed=False)]
+    relaxed_pool = [r for r in prefiltered if _passes_relevance_gate(r, token_count, relaxed=True)]
+
+    pool = strict_pool
+    if len(pool) < SEARCH_MIN_RESULTS:
+        pool = relaxed_pool if relaxed_pool else strict_pool
+    if not pool:
+        return prefiltered[:SEARCH_MIN_RESULTS]
+
+    top_score = float(pool[0]["score"])
+    dynamic_floor = max(score_floor, min(0.18, top_score * 0.45))
+
+    if len(pool) > SEARCH_MAX_RESULTS:
+        dynamic_floor = max(dynamic_floor, float(pool[SEARCH_MAX_RESULTS - 1]["score"]))
+    elif len(pool) < SEARCH_MIN_RESULTS:
+        dynamic_floor = max(score_floor, min(0.08, top_score * 0.22))
+    elif len(pool) < SEARCH_TARGET_RESULTS:
+        dynamic_floor = max(score_floor, min(0.12, top_score * 0.32))
+
+    filtered = [r for r in pool if float(r.get("score", 0.0)) >= dynamic_floor]
+
+    if len(filtered) < SEARCH_MIN_RESULTS and pool is strict_pool and relaxed_pool:
+        fallback_floor = max(score_floor, min(0.08, float(relaxed_pool[0]["score"]) * 0.22))
+        filtered = [r for r in relaxed_pool if float(r.get("score", 0.0)) >= fallback_floor]
+
+    return filtered if filtered else pool[:SEARCH_MIN_RESULTS]
+
+def _search_cache_key(query: str, selected_books: List[int], min_score: float, top_k: int) -> str:
+    cfg = ENGINE.last_cfg or {}
+    built = ENGINE.built
+    built_sig = (
+        getattr(built, "meta_db_path", ""),
+        int(getattr(built, "count", 0) or 0),
+    )
+    scoring_sig = tuple(
+        round(float(cfg.get(k, d)), 4)
+        for k, d in [
+            ("w_vec", 0.35),
+            ("w_bm", 0.25),
+            ("w_overlap", 0.25),
+            ("w_phrase", 0.10),
+            ("w_proximity", 0.05),
+            ("decay_2", 0.75),
+            ("decay_3", 0.35),
+            ("decay_4", 0.05),
+        ]
+    )
+    return json.dumps({
+        "q": clean_text(query),
+        "books": list(selected_books or []),
+        "min_score": round(float(min_score or 0.0), 4),
+        "top_k": int(top_k),
+        "built": built_sig,
+        "scoring": scoring_sig,
+    }, ensure_ascii=True, sort_keys=True)
+
+def _cache_search_results(key: str, results: List[Dict]):
+    cache = ENGINE.search_cache
+    cache[key] = results
+    while len(cache) > SEARCH_CACHE_SIZE:
+        cache.pop(next(iter(cache)))
+
+def _collect_filtered_results(query: str, selected_books: List[int], min_score: float, top_k: int, page: int) -> List[Dict]:
+    cache_key = _search_cache_key(query, selected_books, min_score, top_k)
+    cached = ENGINE.search_cache.get(cache_key)
+    target_results = min(SEARCH_MAX_RESULTS, max(page * top_k, SEARCH_TARGET_RESULTS))
+    if cached is not None and len(cached) >= min(target_results, SEARCH_MAX_RESULTS):
+        return cached
+
+    candidate_budget = min(SEARCH_MAX_CANDIDATES, max(SEARCH_INITIAL_CANDIDATES, target_results * 3))
+    last_filtered: List[Dict] = []
+    last_count = -1
+
+    while True:
+        raw = ENGINE.search(query, book_filter=selected_books if selected_books else None, top_k=candidate_budget)
+        filtered = _adaptive_relevance_filter(raw, min_score, query)
+        last_filtered = filtered
+
+        enough_results = len(filtered) >= target_results
+        saturated = len(filtered) >= SEARCH_MAX_RESULTS
+        exhausted = len(raw) < candidate_budget or candidate_budget >= SEARCH_MAX_CANDIDATES
+        stalled = len(filtered) == last_count and enough_results
+        if exhausted or saturated or stalled:
+            break
+
+        if enough_results and candidate_budget >= min(SEARCH_MAX_CANDIDATES, target_results * 6):
+            break
+
+        last_count = len(filtered)
+        next_budget = min(SEARCH_MAX_CANDIDATES, max(candidate_budget * 2, candidate_budget + SEARCH_INITIAL_CANDIDATES))
+        if next_budget == candidate_budget:
+            break
+        candidate_budget = next_budget
+
+    _cache_search_results(cache_key, last_filtered)
+    return last_filtered
 
 def ensure_offline_assets():
     """Downloads static assets (CSS, JS, Fonts) for offline use."""
@@ -1126,6 +1289,7 @@ def index():
     q = request.args.get("q", "").strip()
     book_ids_str = request.args.getlist("book_id")
     selected_books = [int(b) for b in book_ids_str if b.isdigit()]
+    page = max(1, request.args.get("page", default=1, type=int) or 1)
 
     cfg = ENGINE.last_cfg or {}
     # Initialize status variables at the very top to avoid UnboundLocalError
@@ -1137,7 +1301,10 @@ def index():
     min_score = float(cfg.get("min_score", DEFAULT_MIN_SCORE)) / 100.0
 
     results = []
+    total_results = 0
+    total_pages = 0
     did_you_mean = None
+    pagination_pages: List[int] = []
     expanded_query = q  # הוספנו את האתחול כאן כדי למנוע את השגיאה
 
     # סינון רשימת הספרים: רק מה שקיים באינדקס
@@ -1173,9 +1340,20 @@ def index():
                 expanded_terms = ENGINE.get_expanded_terms(clean_text(q))
                 expanded_query = " ".join(expanded_terms)
 
-            raw = ENGINE.search(q, book_filter=selected_books if selected_books else None, top_k=top_k * 3)
-            filtered = [r for r in raw if r["score"] >= min_score]
-            results = filtered[:top_k]
+            filtered = _collect_filtered_results(q, selected_books, min_score, top_k, page)
+            total_results = len(filtered)
+            total_pages = max(1, math.ceil(total_results / top_k)) if total_results else 0
+            page = min(page, total_pages) if total_pages else 1
+            start_idx = (page - 1) * top_k
+            end_idx = start_idx + top_k
+            results = filtered[start_idx:end_idx]
+
+            if total_pages <= 7:
+                pagination_pages = list(range(1, total_pages + 1))
+            elif total_pages:
+                window_start = max(1, page - 2)
+                window_end = min(total_pages, page + 2)
+                pagination_pages = sorted({1, 2, total_pages - 1, total_pages, *range(window_start, window_end + 1)})
 
     idx_c = ENGINE.built.count if ENGINE.built else 0
 
@@ -1184,6 +1362,7 @@ def index():
         results=results, db_path=current_db, edition=cfg.get("edition", "v3"), max_chunks=int(cfg.get("max_chunks", 100000)), 
         model_source=cfg.get("model_source", "zip"), zip_path=cfg.get("zip_path", ""), idx_count=idx_c, books=sorted_books, 
         selected_books=selected_books, top_k=top_k, min_score=int(cfg.get("min_score", 0)),
+        page=page, total_results=total_results, total_pages=total_pages, pagination_pages=pagination_pages,
         ideal_chunk_words=int(cfg.get("ideal_chunk_words", IDEAL_CHUNK_WORDS)),
         max_chunk_words=int(cfg.get("max_chunk_words", MAX_CHUNK_WORDS)),
         overlap_words=int(cfg.get("overlap_words", DEFAULT_OVERLAP_WORDS)),
@@ -1374,6 +1553,7 @@ def setup():
     })
     save_settings(cfg)
     ENGINE.last_cfg = cfg
+    ENGINE.search_cache.clear()
     if new_index_book_ids:
         ENGINE.log(f"נשמרו הגדרות. אינדוקס יוגבל ל-{len(new_index_book_ids):,} ספרים.", "info")
     else:

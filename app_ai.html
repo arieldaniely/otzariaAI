@@ -67,6 +67,10 @@
         .result-card { background: var(--card-bg); border-radius: 12px; padding: 20px; margin-bottom: 16px; border: 1px solid var(--border-color); transition: transform 0.2s; animation: fadeInUp 0.5s ease-out both; }
         .result-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .pagination .page-link { color: var(--text-main); background: var(--card-bg); border-color: var(--border-color); }
+        .pagination .page-item.active .page-link { background-color: var(--primary-color); border-color: var(--primary-color); color: #fff; }
+        .pagination .page-item.disabled .page-link { background: var(--sidebar-bg); color: #6c757d; }
+        .d-flex.justify-content-between.align-items-center.mb-3.px-1.mt-4.border-bottom.pb-2 > h6.mb-0.text-muted { display: none; }
 
         .source-badge { background-color: #e7f1ff; color: #0d6efd; padding: 4px 10px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; }
         [data-bs-theme="dark"] .source-badge { background-color: rgba(13, 115, 232, 0.2); color: #8ab4f8; }
@@ -331,6 +335,7 @@
              </div>
         {% endif %}
 
+        <div class="small text-muted mb-3">נמצאו {{ total_results }} תוצאות מתאימות. מוצגות {{ results|length }} בעמוד {{ page }}{% if total_pages %} מתוך {{ total_pages }}{% endif %}.</div>
         {% for r in results %}
         <div class="result-card" style="cursor: pointer;" onclick='showContext({{ r.book_id }}, {{ r.line_index }}, {{ r.end_line }}, {{ query|tojson }})'>
             <div class="d-flex justify-content-between align-items-start mb-2">
@@ -349,6 +354,26 @@
             </div>
         </div>
         {% endfor %}
+        {% if total_pages > 1 %}
+        <nav aria-label="ניווט בין עמודי תוצאות" class="mt-4">
+            <ul class="pagination justify-content-center flex-wrap gap-1">
+                <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                    <a class="page-link rounded-pill px-3" href="/?q={{ query|urlencode }}{% for bid in selected_books %}&book_id={{ bid }}{% endfor %}&page={{ page - 1 }}">הקודם</a>
+                </li>
+                {% for p in pagination_pages %}
+                    {% if loop.index0 > 0 and p > pagination_pages[loop.index0 - 1] + 1 %}
+                    <li class="page-item disabled"><span class="page-link rounded-pill">…</span></li>
+                    {% endif %}
+                    <li class="page-item {% if p == page %}active{% endif %}">
+                        <a class="page-link rounded-pill px-3" href="/?q={{ query|urlencode }}{% for bid in selected_books %}&book_id={{ bid }}{% endfor %}&page={{ p }}">{{ p }}</a>
+                    </li>
+                {% endfor %}
+                <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+                    <a class="page-link rounded-pill px-3" href="/?q={{ query|urlencode }}{% for bid in selected_books %}&book_id={{ bid }}{% endfor %}&page={{ page + 1 }}">הבא</a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
     {% endif %}
     {% endif %}
 </div>
@@ -471,7 +496,7 @@
                                         <div class="card-body">
                                             <h6 class="fw-bold mb-3 text-success"><i class="bi bi-eye me-2"></i>הגדרות תצוגה</h6>
                                             <div class="row g-3">
-                                                <div class="col-md-6"><label class="form-label small fw-bold text-muted">תוצאות להצגה (Top K)</label><input type="number" name="top_k" min="1" max="200" class="form-control" value="{{ top_k }}"></div>
+                                                <div class="col-md-6"><label class="form-label small fw-bold text-muted">תוצאות לכל עמוד</label><input type="number" name="top_k" min="1" max="200" class="form-control" value="{{ top_k }}"></div>
                                                 <div class="col-md-6"><label class="form-label small fw-bold text-muted">סף רלוונטיות מינימלי (%)</label><input type="number" name="min_score" min="0" max="100" step="1" class="form-control" value="{{ min_score }}"></div>
                                             </div>
                                             <div class="form-text mt-2">תוצאות עם ציון נמוך מהסף לא יוצגו כלל.</div>
