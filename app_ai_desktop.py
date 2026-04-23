@@ -1,3 +1,4 @@
+import inspect
 import os
 import sys
 
@@ -17,6 +18,9 @@ import app_ai
 
 
 HOST = "127.0.0.1"
+DEFAULT_WINDOW_WIDTH = 1400
+DEFAULT_WINDOW_HEIGHT = 950
+DEFAULT_MIN_SIZE = (1100, 760)
 WINDOW_TITLE = "אוצריא AI"
 
 
@@ -72,6 +76,53 @@ def wait_until_ready(host: str, port: int, timeout: float = 15.0) -> None:
     raise TimeoutError(f"השרת המקומי לא עלה בזמן על {host}:{port}")
 
 
+def get_centered_window_position(width: int, height: int) -> tuple[int | None, int | None]:
+    screens = getattr(webview, "screens", None) or []
+    if not screens:
+        return None, None
+
+    screen = screens[0]
+    screen_x = int(getattr(screen, "x", 0))
+    screen_y = int(getattr(screen, "y", 0))
+    x = screen_x + max((int(screen.width) - width) // 2, 0)
+    y = screen_y + max((int(screen.height) - height) // 2, 0)
+    return x, y
+
+
+def center_window(window, delay: float = 0.0) -> None:
+    def task() -> None:
+        if delay > 0:
+            time.sleep(delay)
+
+        x, y = get_centered_window_position(int(window.width), int(window.height))
+        if x is None or y is None:
+            return
+
+        try:
+            window.move(x, y)
+        except Exception:
+            pass
+
+    threading.Thread(target=task, daemon=True).start()
+
+
+def configure_window_behavior(window) -> None:
+    def maximize_on_show() -> None:
+        try:
+            window.maximize()
+        except Exception:
+            pass
+
+    def center_on_restore() -> None:
+        # Give the native window a moment to leave maximized state before moving it.
+        center_window(window, delay=0.15)
+
+    if hasattr(window.events, "shown"):
+        window.events.shown += maximize_on_show
+    if hasattr(window.events, "restored"):
+        window.events.restored += center_on_restore
+
+
 def main() -> None:
     port = pick_free_port()
 
@@ -82,8 +133,23 @@ def main() -> None:
     wait_until_ready(HOST, port)
 
     icon_path = os.path.join(app_ai.STATIC_DIR, "icon.ico")
+    x, y = get_centered_window_position(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)
+    window_kwargs = {}
+    if x is not None and y is not None:
+        window_kwargs["x"] = x
+        window_kwargs["y"] = y
+    if "maximized" in inspect.signature(webview.create_window).parameters:
+        window_kwargs["maximized"] = True
     # פתיחת החלון הדק שמבוסס על מנוע מערכת ההפעלה
-    webview.create_window(WINDOW_TITLE, f"http://{HOST}:{port}", width=1400, height=950, min_size=(1100, 760))
+    window = webview.create_window(
+        WINDOW_TITLE,
+        f"http://{HOST}:{port}",
+        width=DEFAULT_WINDOW_WIDTH,
+        height=DEFAULT_WINDOW_HEIGHT,
+        min_size=DEFAULT_MIN_SIZE,
+        **window_kwargs,
+    )
+    configure_window_behavior(window)
     webview.start(icon=icon_path)
     
     # כשהמשתמש סוגר את החלון, נכבה את השרת ונצא מהתוכנה
